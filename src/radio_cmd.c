@@ -39,8 +39,8 @@ static struct radio_param_config
 	uint32_t duty_cycle;
 } config = {
 	.tx_pattern = TRANSMIT_PATTERN_11110000,
-	.mode = NRF_RADIO_MODE_BLE_1MBIT,
-	// .mode = NRF_RADIO_MODE_BLE_LR125KBIT,
+	// .mode = NRF_RADIO_MODE_BLE_1MBIT,
+	.mode = NRF_RADIO_MODE_BLE_LR125KBIT,
 	.txpower = RADIO_TXPOWER_TXPOWER_Pos8dBm,
 	.channel_start = 0,
 	.channel_end = 80,

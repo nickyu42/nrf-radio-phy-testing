@@ -6,17 +6,22 @@
 
 #include "radio.h"
 
-#include <string.h>
-#include <inttypes.h>
+// #include <string.h>
+// #include <inttypes.h>
 
 #include <hal/nrf_power.h>
 
 #include <nrfx_timer.h>
 #include <zephyr/kernel.h>
-#include <zephyr/random/rand32.h>
+// #include <zephyr/random/rand32.h>
 
-#include <hal/nrf_egu.h>
+// #include <hal/nrf_egu.h>
 #include <helpers/nrfx_gppi.h>
+
+#include <zephyr/drivers/gpio.h>
+
+bool is_active = false;
+uint32_t is_active_lifetime = 1000;
 
 /* Length on air of the LENGTH field. */
 #define RADIO_LENGTH_LENGTH_FIELD (8UL)
@@ -59,6 +64,10 @@ static uint16_t total_payload_size;
 /* PPI channel for starting radio */
 static uint8_t ppi_radio_start;
 
+#define LED0_NODE DT_ALIAS(led0)
+
+static const struct gpio_dt_spec led0 = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+
 static void radio_power_set(nrf_radio_mode_t mode, uint8_t channel, int8_t power)
 {
 	int8_t output_power = power;
@@ -70,17 +79,17 @@ static void radio_power_set(nrf_radio_mode_t mode, uint8_t channel, int8_t power
 	nrf_radio_txpower_set(NRF_RADIO, (nrf_radio_txpower_t)radio_power);
 }
 
-static void radio_ppi_tx_reconfigure(void)
-{
-	nrfx_gppi_channels_disable(BIT(ppi_radio_start));
-	nrfx_gppi_fork_endpoint_clear(ppi_radio_start,
-								  nrf_timer_task_address_get(timer.p_reg, NRF_TIMER_TASK_START));
-	nrfx_gppi_event_endpoint_clear(ppi_radio_start,
-								   nrf_egu_event_address_get(RADIO_TEST_EGU, RADIO_TEST_EGU_EVENT));
-	nrfx_gppi_event_endpoint_setup(ppi_radio_start,
-								   nrf_timer_event_address_get(timer.p_reg, NRF_TIMER_EVENT_COMPARE1));
-	nrfx_gppi_channels_enable(BIT(ppi_radio_start));
-}
+// static void radio_ppi_tx_reconfigure(void)
+// {
+// 	nrfx_gppi_channels_disable(BIT(ppi_radio_start));
+// 	nrfx_gppi_fork_endpoint_clear(ppi_radio_start,
+// 								  nrf_timer_task_address_get(timer.p_reg, NRF_TIMER_TASK_START));
+// 	nrfx_gppi_event_endpoint_clear(ppi_radio_start,
+// 								   nrf_egu_event_address_get(RADIO_TEST_EGU, RADIO_TEST_EGU_EVENT));
+// 	nrfx_gppi_event_endpoint_setup(ppi_radio_start,
+// 								   nrf_timer_event_address_get(timer.p_reg, NRF_TIMER_EVENT_COMPARE1));
+// 	nrfx_gppi_channels_enable(BIT(ppi_radio_start));
+// }
 
 static void radio_channel_set(nrf_radio_mode_t mode, uint8_t channel)
 {
@@ -252,8 +261,8 @@ void radio_test_cancel(void)
 	// sweep_processing = false;
 
 	nrfx_gppi_channels_disable(BIT(ppi_radio_start));
-	nrfx_gppi_event_endpoint_clear(ppi_radio_start,
-								   nrf_egu_event_address_get(RADIO_TEST_EGU, RADIO_TEST_EGU_EVENT));
+	// nrfx_gppi_event_endpoint_clear(ppi_radio_start,
+	// 							   nrf_egu_event_address_get(RADIO_TEST_EGU, RADIO_TEST_EGU_EVENT));
 	nrfx_gppi_task_endpoint_clear(ppi_radio_start,
 								  nrf_radio_task_address_get(NRF_RADIO, NRF_RADIO_TASK_TXEN));
 	nrfx_gppi_task_endpoint_clear(ppi_radio_start,
@@ -282,19 +291,33 @@ void radio_handler(const void *context)
 		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_CRCOK);
 		rx_packet_cnt++;
 
-		nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_RSSISTOP);
+		// is_active = true;
+		is_active_lifetime = 1000;
+
+		// gpio_pin_toggle_dt(&led0);
+
+		// nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_RSSISTOP);
 	}
 
 	if (nrf_radio_event_check(NRF_RADIO, NRF_RADIO_EVENT_RSSIEND))
 	{
+		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_RSSIEND);
+
 		rssi = nrf_radio_rssi_sample_get(NRF_RADIO);
+
+		nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_RSSISTOP);
 	}
 
 	if (nrf_radio_event_check(NRF_RADIO, NRF_RADIO_EVENT_END))
 	{
 		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
 
+		// gpio_pin_toggle_dt(&led0);
+
 		tx_packet_cnt++;
+
+		// is_active = true;
+		is_active_lifetime = 1000;
 	}
 }
 

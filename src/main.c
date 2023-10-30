@@ -1,6 +1,7 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/clock_control/nrf_clock_control.h>
+#include <zephyr/drivers/gpio.h>
 
 // #include <zephyr/bluetooth/bluetooth.h>
 // #include <zephyr/bluetooth/conn.h>
@@ -21,6 +22,17 @@
 
 // static K_WORK_DEFINE(start_advertising_worker, start_advertising_coded);
 // // static K_WORK_DELAYABLE_DEFINE(notify_work, notify_work_handler);
+
+#include "radio.h"
+
+#define LED0_NODE DT_ALIAS(led0)
+#define LED1_NODE DT_ALIAS(led1)
+
+static const struct gpio_dt_spec led0 = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
+
+#define STACKSIZE 256
+#define PRIORITY 7
 
 static void clock_init(void)
 {
@@ -151,6 +163,75 @@ static void clock_init(void)
 
 // 	printk("Advertiser %p set started\n", adv);
 // }
+void status_led(void)
+{
+	if (!gpio_is_ready_dt(&led0) || !gpio_is_ready_dt(&led1))
+	{
+		printk("Could not enable LED GPIO\n");
+		return 0;
+	}
+
+	if (gpio_pin_configure_dt(&led0, GPIO_OUTPUT_ACTIVE) < 0 || gpio_pin_configure_dt(&led1, GPIO_OUTPUT_ACTIVE) < 0)
+	{
+		printk("Could not configure LED GPIO\n");
+		return 0;
+	}
+
+	gpio_pin_set_dt(&led0, 0);
+
+	uint8_t ctr = 0;
+	uint8_t hb_ctr = 0;
+
+	while (true)
+	{
+		if (is_active_lifetime > 0 && ctr >= 50)
+		{
+			gpio_pin_toggle_dt(&led0);
+			ctr = 0;
+		}
+
+		if (is_active_lifetime > 0)
+		{
+			ctr++;
+			is_active_lifetime -= 10;
+		}
+
+		if (is_active_lifetime == 10)
+		{
+			gpio_pin_set_dt(&led0, 0);
+		}
+
+		hb_ctr++;
+		if (hb_ctr >= 50)
+		{
+			gpio_pin_toggle_dt(&led1);
+			hb_ctr = 0;
+		}
+
+		k_msleep(10);
+	}
+}
+
+void hb(void)
+{
+	// if (!gpio_is_ready_dt(&led1))
+	// {
+	// 	printk("Could not enable LED GPIO\n");
+	// 	return 0;
+	// }
+
+	// if (gpio_pin_configure_dt(&led1, GPIO_OUTPUT_ACTIVE) < 0)
+	// {
+	// 	printk("Could not configure LED GPIO\n");
+	// 	return 0;
+	// }
+
+	while (true)
+	{
+		gpio_pin_toggle_dt(&led1);
+		k_msleep(500);
+	}
+}
 
 int main(void)
 {
@@ -180,12 +261,17 @@ int main(void)
 	// k_work_submit(&start_advertising_worker);
 	// k_work_schedule(&notify_work, K_NO_WAIT);
 
-	err = bluetooth_init();
-	if (err)
-	{
-		printk("Main: bluetooth init failed (err %d)\n", err);
-		return 0;
-	}
+	// err = bluetooth_init();
+	// if (err)
+	// {
+	// 	printk("Main: bluetooth init failed (err %d)\n", err);
+	// 	return 0;
+	// }
 
 	return 0;
 }
+
+K_THREAD_DEFINE(status_led_id, 256, status_led, NULL, NULL, NULL,
+				PRIORITY, 0, 0);
+// K_THREAD_DEFINE(hb_id, 512, hb, NULL, NULL, NULL,
+// 				8, 0, 0);
