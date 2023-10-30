@@ -8,8 +8,8 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
 
-int my_service_init(void);
+int host_service_init(void);
 
-void my_service_send(struct bt_conn *conn, const uint8_t *data, uint16_t len);
+void host_service_send(struct bt_conn *conn, const uint8_t *data, uint16_t len);
 
 #endif

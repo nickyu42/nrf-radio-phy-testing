@@ -10,33 +10,20 @@
 #include <zephyr/types.h>
 #include <hal/nrf_radio.h>
 
-#ifdef NRF53_SERIES
-#ifndef RADIO_TXPOWER_TXPOWER_Pos3dBm
-	#define RADIO_TXPOWER_TXPOWER_Pos3dBm (0x03UL)
-#endif /* RADIO_TXPOWER_TXPOWER_Pos3dBm */
-
-#ifndef RADIO_TXPOWER_TXPOWER_Pos2dBm
-	#define RADIO_TXPOWER_TXPOWER_Pos2dBm (0x02UL)
-#endif /* RADIO_TXPOWER_TXPOWER_Pos2dBm */
-
-#ifndef RADIO_TXPOWER_TXPOWER_Pos1dBm
-	#define RADIO_TXPOWER_TXPOWER_Pos1dBm (0x01UL)
-#endif /* RADIO_TXPOWER_TXPOWER_Pos1dBm */
-#endif /* NRF53_SERIES */
-
 /** Maximum radio RX or TX payload. */
-#define RADIO_MAX_PAYLOAD_LEN	256
+#define RADIO_MAX_PAYLOAD_LEN 256
 /** IEEE 802.15.4 maximum payload length. */
-#define IEEE_MAX_PAYLOAD_LEN	127
+#define IEEE_MAX_PAYLOAD_LEN 127
 /** IEEE 802.15.4 minimum channel. */
-#define IEEE_MIN_CHANNEL	11
+#define IEEE_MIN_CHANNEL 11
 /** IEEE 802.15.4 maximum channel. */
-#define IEEE_MAX_CHANNEL	26
+#define IEEE_MAX_CHANNEL 26
 
 #define FEM_USE_DEFAULT_GAIN 0xFF
 
 /**@brief Radio transmit and address pattern. */
-enum transmit_pattern {
+enum transmit_pattern
+{
 	/** Random pattern. */
 	TRANSMIT_PATTERN_RANDOM,
 
@@ -48,7 +35,8 @@ enum transmit_pattern {
 };
 
 /**@brief Radio test mode. */
-enum radio_test_mode {
+enum radio_test_mode
+{
 	/** TX carrier. */
 	UNMODULATED_TX,
 
@@ -69,7 +57,8 @@ enum radio_test_mode {
 };
 
 /**@brief Radio test front-end module (FEM) configuration */
-struct radio_test_fem {
+struct radio_test_fem
+{
 	/* Front-end module radio ramp-up time in microseconds. */
 	uint32_t ramp_up_time;
 
@@ -81,15 +70,18 @@ struct radio_test_fem {
 };
 
 /**@brief Radio test configuration. */
-struct radio_test_config {
+struct radio_test_config
+{
 	/** Radio test type. */
 	enum radio_test_mode type;
 
 	/** Radio mode. Data rate and modulation. */
 	nrf_radio_mode_t mode;
 
-	union {
-		struct {
+	union
+	{
+		struct
+		{
 			/** Radio output power. */
 			int8_t txpower;
 
@@ -97,7 +89,8 @@ struct radio_test_config {
 			uint8_t channel;
 		} unmodulated_tx;
 
-		struct {
+		struct
+		{
 			/** Radio output power. */
 			int8_t txpower;
 
@@ -117,7 +110,8 @@ struct radio_test_config {
 			void (*cb)(void);
 		} modulated_tx;
 
-		struct {
+		struct
+		{
 			/** Radio transmission pattern. */
 			enum transmit_pattern pattern;
 
@@ -125,7 +119,8 @@ struct radio_test_config {
 			uint8_t channel;
 		} rx;
 
-		struct {
+		struct
+		{
 			/** Radio output power. */
 			int8_t txpower;
 
@@ -139,7 +134,8 @@ struct radio_test_config {
 			uint32_t delay_ms;
 		} tx_sweep;
 
-		struct {
+		struct
+		{
 			/** Radio start channel (frequency). */
 			uint8_t channel_start;
 
@@ -150,7 +146,8 @@ struct radio_test_config {
 			uint32_t delay_ms;
 		} rx_sweep;
 
-		struct {
+		struct
+		{
 			/** Radio output power. */
 			int8_t txpower;
 
@@ -172,9 +169,11 @@ struct radio_test_config {
 };
 
 /**@brief Radio RX statistics. */
-struct radio_rx_stats {
+struct radio_rx_stats
+{
 	/** Content of the last packet. */
-	struct {
+	struct
+	{
 		/** Content of the last packet. */
 		uint8_t *buf;
 

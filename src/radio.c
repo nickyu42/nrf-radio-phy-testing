@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-#include "radio_test.h"
+#include "radio.h"
 
 #include <string.h>
 #include <inttypes.h>
@@ -81,19 +81,6 @@ static void radio_ppi_tx_reconfigure(void)
 								   nrf_timer_event_address_get(timer.p_reg, NRF_TIMER_EVENT_COMPARE1));
 	nrfx_gppi_channels_enable(BIT(ppi_radio_start));
 }
-
-// static void radio_start(bool rx, bool force_egu)
-// {
-// 	if (IS_ENABLED(CONFIG_FEM) || force_egu)
-// 	{
-// 		nrf_egu_task_trigger(RADIO_TEST_EGU,
-// 							 nrf_egu_task_address_get(RADIO_TEST_EGU, RADIO_TEST_EGU_TASK));
-// 	}
-// 	else
-// 	{
-// 		nrf_radio_task_trigger(NRF_RADIO, rx ? NRF_RADIO_TASK_RXEN : NRF_RADIO_TASK_TXEN);
-// 	}
-// }
 
 static void radio_channel_set(nrf_radio_mode_t mode, uint8_t channel)
 {

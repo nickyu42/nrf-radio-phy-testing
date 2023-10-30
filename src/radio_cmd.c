@@ -12,7 +12,7 @@
 #include <zephyr/types.h>
 #include <hal/nrf_power.h>
 
-#include "radio_test.h"
+#include "radio.h"
 
 /* Radio parameter configuration. */
 static struct radio_param_config
@@ -39,7 +39,8 @@ static struct radio_param_config
 	uint32_t duty_cycle;
 } config = {
 	.tx_pattern = TRANSMIT_PATTERN_11110000,
-	.mode = NRF_RADIO_MODE_BLE_LR125KBIT,
+	.mode = NRF_RADIO_MODE_BLE_1MBIT,
+	// .mode = NRF_RADIO_MODE_BLE_LR125KBIT,
 	.txpower = RADIO_TXPOWER_TXPOWER_Pos8dBm,
 	.channel_start = 0,
 	.channel_end = 80,
@@ -71,11 +72,6 @@ static int cmd_tx_carrier_start(const struct shell *shell, size_t argc,
 	return 0;
 }
 
-static void tx_modulated_carrier_end(void)
-{
-	printk("The modulated TX has finished\n");
-}
-
 static int cmd_tx_start(const struct shell *shell,
 						size_t argc,
 						char **argv)
@@ -97,7 +93,6 @@ static int cmd_tx_start(const struct shell *shell,
 	if (argc == 2)
 	{
 		test_config.params.modulated_tx.packets_num = atoi(argv[1]);
-		test_config.params.modulated_tx.cb = tx_modulated_carrier_end;
 	}
 
 	radio_test_start(&test_config);
