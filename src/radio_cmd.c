@@ -76,9 +76,9 @@ static void tx_modulated_carrier_end(void)
 	printk("The modulated TX has finished\n");
 }
 
-static int cmd_tx_modulated_carrier_start(const struct shell *shell,
-										  size_t argc,
-										  char **argv)
+static int cmd_tx_start(const struct shell *shell,
+						size_t argc,
+						char **argv)
 {
 
 	if (argc > 2)
@@ -138,9 +138,9 @@ static int cmd_print_payload(const struct shell *shell, size_t argc,
 
 SHELL_CMD_REGISTER(cancel, NULL, "Cancel the sweep or the carrier",
 				   cmd_cancel);
-SHELL_CMD_REGISTER(start_tx_modulated_carrier, NULL,
+SHELL_CMD_REGISTER(start_tx, NULL,
 				   "Start the modulated TX carrier",
-				   cmd_tx_modulated_carrier_start);
+				   cmd_tx_start);
 SHELL_CMD_REGISTER(start_rx, NULL, "Start RX", cmd_rx_start);
 SHELL_CMD_REGISTER(print_rx, NULL, "Print RX payload", cmd_print_payload);
 
