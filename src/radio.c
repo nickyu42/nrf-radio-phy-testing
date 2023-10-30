@@ -79,18 +79,6 @@ static void radio_power_set(nrf_radio_mode_t mode, uint8_t channel, int8_t power
 	nrf_radio_txpower_set(NRF_RADIO, (nrf_radio_txpower_t)radio_power);
 }
 
-// static void radio_ppi_tx_reconfigure(void)
-// {
-// 	nrfx_gppi_channels_disable(BIT(ppi_radio_start));
-// 	nrfx_gppi_fork_endpoint_clear(ppi_radio_start,
-// 								  nrf_timer_task_address_get(timer.p_reg, NRF_TIMER_TASK_START));
-// 	nrfx_gppi_event_endpoint_clear(ppi_radio_start,
-// 								   nrf_egu_event_address_get(RADIO_TEST_EGU, RADIO_TEST_EGU_EVENT));
-// 	nrfx_gppi_event_endpoint_setup(ppi_radio_start,
-// 								   nrf_timer_event_address_get(timer.p_reg, NRF_TIMER_EVENT_COMPARE1));
-// 	nrfx_gppi_channels_enable(BIT(ppi_radio_start));
-// }
-
 static void radio_channel_set(nrf_radio_mode_t mode, uint8_t channel)
 {
 	uint16_t frequency;
@@ -156,15 +144,6 @@ static void radio_config(nrf_radio_mode_t mode, enum transmit_pattern pattern)
 
 	nrf_radio_packet_configure(NRF_RADIO, &packet_conf);
 }
-
-// static void generate_modulated_rf_packet(uint8_t mode,
-// 										 enum transmit_pattern pattern)
-// {
-// 	radio_config(mode, pattern);
-// 	tx_packet[0] = sizeof(tx_packet) - 1;
-// 	memset(tx_packet + 1, 0xF0, sizeof(tx_packet) - 1);
-// 	nrf_radio_packetptr_set(NRF_RADIO, tx_packet);
-// }
 
 static void radio_disable(void)
 {
@@ -291,12 +270,7 @@ void radio_handler(const void *context)
 		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_CRCOK);
 		rx_packet_cnt++;
 
-		// is_active = true;
-		is_active_lifetime = 1000;
-
-		// gpio_pin_toggle_dt(&led0);
-
-		// nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_RSSISTOP);
+		radio_is_active_counter = 1000;
 	}
 
 	if (nrf_radio_event_check(NRF_RADIO, NRF_RADIO_EVENT_RSSIEND))
@@ -305,6 +279,7 @@ void radio_handler(const void *context)
 
 		rssi = nrf_radio_rssi_sample_get(NRF_RADIO);
 
+		// Stop after 1 sample
 		nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_RSSISTOP);
 	}
 
@@ -312,12 +287,8 @@ void radio_handler(const void *context)
 	{
 		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
 
-		// gpio_pin_toggle_dt(&led0);
-
 		tx_packet_cnt++;
-
-		// is_active = true;
-		is_active_lifetime = 1000;
+		radio_is_active_counter = 1000;
 	}
 }
 

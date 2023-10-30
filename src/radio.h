@@ -21,8 +21,7 @@
 
 #define FEM_USE_DEFAULT_GAIN 0xFF
 
-extern bool is_active;
-extern uint32_t is_active_lifetime;
+extern uint32_t radio_is_active_counter;
 
 /**@brief Radio transmit and address pattern. */
 enum transmit_pattern
