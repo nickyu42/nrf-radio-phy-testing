@@ -20,8 +20,7 @@
 
 #include <zephyr/drivers/gpio.h>
 
-bool is_active = false;
-uint32_t is_active_lifetime = 1000;
+uint32_t radio_is_active_counter = 0;
 
 /* Length on air of the LENGTH field. */
 #define RADIO_LENGTH_LENGTH_FIELD (8UL)
@@ -215,7 +214,6 @@ static void radio_rx(uint8_t mode, uint8_t channel, enum transmit_pattern patter
 
 void radio_test_start(const struct radio_test_config *config)
 {
-
 	switch (config->type)
 	{
 	case MODULATED_TX:

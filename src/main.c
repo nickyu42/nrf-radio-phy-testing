@@ -4,6 +4,8 @@
 #include <zephyr/drivers/gpio.h>
 
 #include "radio.h"
+#include "bluetooth.h"
+#include "timeslot.h"
 
 #define LED0_NODE DT_ALIAS(led0)
 #define LED1_NODE DT_ALIAS(led1)
@@ -13,6 +15,8 @@ static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
 
 #define STATUS_THREAD_STACKSIZE 256
 #define STATUS_THREAD_PRIORITY 7
+
+static struct radio_test_config test_config;
 
 static void clock_init(void)
 {
@@ -72,25 +76,25 @@ void status_thread(void)
 
 	while (true)
 	{
-		if (is_active_lifetime > 0 && ctr >= 50)
+		if (radio_is_active_counter > 0 && ctr >= 50)
 		{
 			gpio_pin_toggle_dt(&led0);
 			ctr = 0;
 		}
 
-		if (is_active_lifetime > 0)
+		if (radio_is_active_counter > 0)
 		{
 			ctr++;
-			is_active_lifetime -= 10;
+			radio_is_active_counter -= 10;
 		}
 
-		if (is_active_lifetime == 10)
+		if (radio_is_active_counter == 10)
 		{
 			gpio_pin_set_dt(&led0, 0);
 		}
 
 		heartbeat_ctr++;
-		if (heartbeat_ctr >= 50)
+		if (heartbeat_ctr >= 80)
 		{
 			gpio_pin_toggle_dt(&led1);
 			heartbeat_ctr = 0;
@@ -100,12 +104,40 @@ void status_thread(void)
 	}
 }
 
+static void start_tx(void)
+{
+	printk("Starting TX\n");
+	memset(&test_config, 0, sizeof(test_config));
+	test_config.type = MODULATED_TX;
+	test_config.mode = NRF_RADIO_MODE_BLE_LR125KBIT;
+	test_config.params.modulated_tx.txpower = NRF_RADIO_TXPOWER_POS8DBM;
+	test_config.params.modulated_tx.channel = 0;
+	test_config.params.modulated_tx.pattern = TRANSMIT_PATTERN_11110000;
+	radio_test_start(&test_config);
+}
+
+static void start_rx(void)
+{
+	printk("Starting RX\n");
+	memset(&test_config, 0, sizeof(test_config));
+	test_config.type = RX;
+	test_config.mode = NRF_RADIO_MODE_BLE_LR125KBIT;
+	test_config.params.rx.channel = 0;
+	test_config.params.rx.pattern = TRANSMIT_PATTERN_11110000;
+	radio_test_start(&test_config);
+	return 0;
+}
+
 int main(void)
 {
 	int err;
 
 	printk("Starting High Frequency Clock\n");
 	clock_init();
+
+	bluetooth_init();
+
+	// start_radio_timeslot(false);
 
 	return 0;
 }
