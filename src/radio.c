@@ -6,16 +6,11 @@
 
 #include "radio.h"
 
-// #include <string.h>
-// #include <inttypes.h>
-
 #include <hal/nrf_power.h>
 
 #include <nrfx_timer.h>
 #include <zephyr/kernel.h>
-// #include <zephyr/random/rand32.h>
 
-// #include <hal/nrf_egu.h>
 #include <helpers/nrfx_gppi.h>
 
 #include <zephyr/drivers/gpio.h>
@@ -63,9 +58,11 @@ static uint16_t total_payload_size;
 /* PPI channel for starting radio */
 static uint8_t ppi_radio_start;
 
-#define LED0_NODE DT_ALIAS(led0)
-
-static const struct gpio_dt_spec led0 = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+/* RX packets statistics */
+uint32_t radio_total_rssi;
+uint32_t radio_packets_received;
+uint32_t radio_total_crcok;
+bool radio_has_received;
 
 static void radio_power_set(nrf_radio_mode_t mode, uint8_t channel, int8_t power)
 {
@@ -175,6 +172,7 @@ static void radio_modulated_tx_carrier(uint8_t mode, int8_t txpower, uint8_t cha
 
 	nrf_radio_shorts_enable(NRF_RADIO,
 							NRF_RADIO_SHORT_READY_START_MASK |
+								NRF_RADIO_SHORT_END_START_MASK |
 								NRF_RADIO_SHORT_PHYEND_START_MASK);
 
 	radio_mode_set(NRF_RADIO, mode);
@@ -185,7 +183,8 @@ static void radio_modulated_tx_carrier(uint8_t mode, int8_t txpower, uint8_t cha
 	tx_packet_cnt = 0;
 
 	nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
-	nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_END_MASK);
+	nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_PHYEND);
+	nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_END_MASK | NRF_RADIO_INT_PHYEND_MASK);
 
 	nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
 }
@@ -207,7 +206,10 @@ static void radio_rx(uint8_t mode, uint8_t channel, enum transmit_pattern patter
 
 	rx_packet_cnt = 0;
 
-	nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_CRCOK_MASK | NRF_RADIO_INT_RSSIEND_MASK);
+	nrf_radio_int_enable(NRF_RADIO,
+						 NRF_RADIO_INT_CRCOK_MASK |
+							 NRF_RADIO_INT_RSSIEND_MASK |
+							 NRF_RADIO_INT_ADDRESS_MASK);
 
 	nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_RXEN);
 }
@@ -261,7 +263,7 @@ void radio_rx_stats_get(struct radio_rx_stats *rx_stats)
 	rx_stats->packet_cnt = rx_packet_cnt;
 }
 
-void radio_handler(const void *context)
+void radio_handler()
 {
 	if (nrf_radio_event_check(NRF_RADIO, NRF_RADIO_EVENT_CRCOK))
 	{
@@ -269,6 +271,8 @@ void radio_handler(const void *context)
 		rx_packet_cnt++;
 
 		radio_is_active_counter = 1000;
+
+		radio_total_crcok++;
 	}
 
 	if (nrf_radio_event_check(NRF_RADIO, NRF_RADIO_EVENT_RSSIEND))
@@ -279,22 +283,43 @@ void radio_handler(const void *context)
 
 		// Stop after 1 sample
 		nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_RSSISTOP);
+
+		radio_total_rssi += rssi;
 	}
 
-	if (nrf_radio_event_check(NRF_RADIO, NRF_RADIO_EVENT_END))
+	if (nrf_radio_event_check(NRF_RADIO, NRF_RADIO_EVENT_ADDRESS))
+	{
+		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_ADDRESS);
+
+		if (!radio_has_received)
+		{
+			radio_has_received = true;
+			// Store when the first packet is received into CC[0]
+			NRF_TIMER2->TASKS_CAPTURE[0] = TIMER_TASKS_CAPTURE_TASKS_CAPTURE_Trigger;
+		}
+
+		NRF_TIMER2->TASKS_CAPTURE[1] = TIMER_TASKS_CAPTURE_TASKS_CAPTURE_Trigger;
+		radio_packets_received++;
+	}
+
+	if (nrf_radio_event_check(NRF_RADIO, NRF_RADIO_EVENT_END) | nrf_radio_event_check(NRF_RADIO, NRF_RADIO_EVENT_PHYEND))
 	{
 		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
+		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_PHYEND);
 
 		tx_packet_cnt++;
 		radio_is_active_counter = 1000;
 	}
 }
 
-int radio_test_init(struct radio_test_config *config)
+int radio_test_init()
 {
 	// Radio handler only counts sent/received packets
-	irq_connect_dynamic(RADIO_IRQn, IRQ_PRIO_LOWEST, radio_handler, config, 0);
+	// IRQ_CONNECT(RADIO_IRQn, IRQ_PRIO_LOWEST, radio_handler, NULL, 0);
+	irq_connect_dynamic(RADIO_IRQn, IRQ_PRIO_LOWEST, radio_handler, NULL, 0);
 	irq_enable(RADIO_IRQn);
 
 	return 0;
 }
+
+// SYS_INIT(radio_test_init, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);

@@ -22,6 +22,10 @@
 #define FEM_USE_DEFAULT_GAIN 0xFF
 
 extern uint32_t radio_is_active_counter;
+extern uint32_t radio_total_rssi;
+extern uint32_t radio_packets_received;
+extern uint32_t radio_total_crcok;
+extern bool radio_has_received;
 
 /**@brief Radio transmit and address pattern. */
 enum transmit_pattern
@@ -195,7 +199,7 @@ struct radio_rx_stats
  * @retval 0 If the operation was successful.
  *           Otherwise, a (negative) error code is returned.
  */
-int radio_test_init(struct radio_test_config *config);
+int radio_test_init();
 
 /**
  * @brief Function for starting radio test.
