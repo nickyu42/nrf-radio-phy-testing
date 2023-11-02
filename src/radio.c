@@ -64,6 +64,9 @@ uint32_t radio_packets_received;
 uint32_t radio_total_crcok;
 bool radio_has_received;
 
+/* TX packets statistics */
+uint32_t radio_packets_sent;
+
 static void radio_power_set(nrf_radio_mode_t mode, uint8_t channel, int8_t power)
 {
 	int8_t output_power = power;
@@ -170,10 +173,18 @@ static void radio_modulated_tx_carrier(uint8_t mode, int8_t txpower, uint8_t cha
 	memset(tx_packet + 1, 0xF0, sizeof(tx_packet) - 1);
 	nrf_radio_packetptr_set(NRF_RADIO, tx_packet);
 
-	nrf_radio_shorts_enable(NRF_RADIO,
-							NRF_RADIO_SHORT_READY_START_MASK |
-								NRF_RADIO_SHORT_END_START_MASK |
-								NRF_RADIO_SHORT_PHYEND_START_MASK);
+	if (mode == RADIO_MODE_MODE_Ble_LR125Kbit || mode == RADIO_MODE_MODE_Ble_LR500Kbit)
+	{
+		nrf_radio_shorts_enable(NRF_RADIO,
+								NRF_RADIO_SHORT_READY_START_MASK |
+									NRF_RADIO_SHORT_PHYEND_START_MASK);
+	}
+	else
+	{
+		nrf_radio_shorts_enable(NRF_RADIO,
+								NRF_RADIO_SHORT_READY_START_MASK |
+									NRF_RADIO_SHORT_END_START_MASK);
+	}
 
 	radio_mode_set(NRF_RADIO, mode);
 	radio_power_set(mode, channel, txpower);
@@ -184,7 +195,15 @@ static void radio_modulated_tx_carrier(uint8_t mode, int8_t txpower, uint8_t cha
 
 	nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
 	nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_PHYEND);
-	nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_END_MASK | NRF_RADIO_INT_PHYEND_MASK);
+
+	if (mode == RADIO_MODE_MODE_Ble_LR125Kbit || mode == RADIO_MODE_MODE_Ble_LR500Kbit)
+	{
+		nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_PHYEND_MASK);
+	}
+	else
+	{
+		nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_END_MASK);
+	}
 
 	nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
 }
@@ -268,7 +287,7 @@ void radio_handler()
 	if (nrf_radio_event_check(NRF_RADIO, NRF_RADIO_EVENT_CRCOK))
 	{
 		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_CRCOK);
-		rx_packet_cnt++;
+		// rx_packet_cnt++;
 
 		radio_is_active_counter = 1000;
 
@@ -307,7 +326,8 @@ void radio_handler()
 		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
 		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_PHYEND);
 
-		tx_packet_cnt++;
+		// tx_packet_cnt++;
+		radio_packets_sent++;
 		radio_is_active_counter = 1000;
 	}
 }
@@ -321,5 +341,3 @@ int radio_test_init()
 
 	return 0;
 }
-
-// SYS_INIT(radio_test_init, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);

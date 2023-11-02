@@ -4,24 +4,28 @@
 #include "radio.h"
 #include "bluetooth.h"
 
-#define MY_SERVICE_UUID 0x1E, 0x6B, 0x0B, 0xEA, 0x7A, 0x4F, 0x48, 0x2B, \
-                        0x86, 0x9C, 0x76, 0x80, 0x15, 0xA5, 0x1A, 0xA5
+#define RADIO_SERVICE 0x1E, 0x6B, 0x0B, 0xEA, 0x7A, 0x4F, 0x48, 0x2B, \
+                      0x86, 0x9C, 0x76, 0x80, 0x15, 0xA5, 0x1A, 0xA5
 
-#define RX_CHARACTERISTIC_UUID 0xC4, 0x17, 0xB1, 0x87, 0x59, 0x6C, 0x48, 0x60, \
-                               0xAC, 0xD3, 0x17, 0xCD, 0xF8, 0xF8, 0x71, 0x73
+#define RADIO_COMMAND_CHARACTERISTIC 0xFA, 0x26, 0xA2, 0x40, 0x3B, 0x8A, 0x44, 0xD7, \
+                                     0xBD, 0x9B, 0xE3, 0x7D, 0xBC, 0xDC, 0xE9, 0x58
 
-#define TX_CHARACTERISTIC_UUID 0xFA, 0x26, 0xA2, 0x40, 0x3B, 0x8A, 0x44, 0xD7, \
-                               0xBD, 0x9B, 0xE3, 0x7D, 0xBC, 0xDC, 0xE9, 0x58
+#define RADIO_RX_STATS_CHARACTERISTIC 0xC4, 0x17, 0xB1, 0x87, 0x59, 0x6C, 0x48, 0x60, \
+                                      0xAC, 0xD3, 0x17, 0xCD, 0xF8, 0xF8, 0x71, 0x73
 
-#define BT_UUID_MY_SERVICE BT_UUID_DECLARE_128(MY_SERVICE_UUID)
-#define BT_UUID_MY_SERVICE_RX BT_UUID_DECLARE_128(RX_CHARACTERISTIC_UUID)
-#define BT_UUID_MY_SERVICE_TX BT_UUID_DECLARE_128(TX_CHARACTERISTIC_UUID)
+#define RADIO_TX_STATS_CHARACTERISTIC 0xDF, 0x14, 0xEA, 0xAC, 0xB1, 0x07, 0x42, 0xEC, \
+                                      0xB9, 0x93, 0x73, 0x22, 0x46, 0x10, 0x02, 0x0A
+
+#define RADIO_SERVICE_UUID BT_UUID_DECLARE_128(RADIO_SERVICE)
+#define RADIO_COMMAND_CHARACTERISTIC_UUID BT_UUID_DECLARE_128(RADIO_COMMAND_CHARACTERISTIC)
+#define RADIO_RX_STATS_CHARACTERISTIC_UUID BT_UUID_DECLARE_128(RADIO_RX_STATS_CHARACTERISTIC)
+#define RADIO_TX_STATS_CHARACTERISTIC_UUID BT_UUID_DECLARE_128(RADIO_TX_STATS_CHARACTERISTIC)
 
 #define MAX_TRANSMIT_SIZE 240
 uint8_t data_rx[MAX_TRANSMIT_SIZE];
 uint8_t data_tx[MAX_TRANSMIT_SIZE];
 
-uint8_t rx_stats_read_buffer[16];
+uint8_t stats_read_buffer[16];
 
 static nrf_radio_mode_t mode;
 static uint8_t tx_power;
@@ -54,6 +58,9 @@ static int send_tx_packets(void)
     test_config.params.modulated_tx.channel = channel;
     test_config.params.modulated_tx.pattern = TRANSMIT_PATTERN_11110000;
     test_config.params.modulated_tx.packets_num = 5000;
+
+    // Reset radio TX statistics
+    radio_packets_sent = 0;
 
     bluetooth_disable();
     printk("Disabling MPSL\n");
@@ -119,7 +126,7 @@ static int receive_rx_packets(void)
            radio_packets_received, radio_total_crcok, radio_total_rssi, ticks_taken, NRF_TIMER2->CC[2]);
 }
 
-static ssize_t on_receive(
+static ssize_t handle_host_command(
     struct bt_conn *conn,
     const struct bt_gatt_attr *attr,
     const void *buf,
@@ -219,36 +226,51 @@ static ssize_t on_receive(
     return len;
 }
 
-static ssize_t on_read(
+static ssize_t read_tx_stats_handler(
     struct bt_conn *conn,
     const struct bt_gatt_attr *attr,
     void *buf,
     uint16_t len,
     uint16_t offset)
 {
-    rx_stats_read_buffer[0] = radio_total_rssi & 0xFF;
-    rx_stats_read_buffer[1] = (radio_total_rssi >> 8) & 0xFF;
-    rx_stats_read_buffer[2] = (radio_total_rssi >> 16) & 0xFF;
-    rx_stats_read_buffer[3] = (radio_total_rssi >> 24) & 0xFF;
+    stats_read_buffer[0] = radio_packets_sent & 0xFF;
+    stats_read_buffer[1] = (radio_packets_sent >> 8) & 0xFF;
+    stats_read_buffer[2] = (radio_packets_sent >> 16) & 0xFF;
+    stats_read_buffer[3] = (radio_packets_sent >> 24) & 0xFF;
 
-    rx_stats_read_buffer[4] = radio_packets_received & 0xFF;
-    rx_stats_read_buffer[5] = (radio_packets_received >> 8) & 0xFF;
-    rx_stats_read_buffer[6] = (radio_packets_received >> 16) & 0xFF;
-    rx_stats_read_buffer[7] = (radio_packets_received >> 24) & 0xFF;
+    return bt_gatt_attr_read(conn, attr, buf, len, offset, stats_read_buffer, 4);
+}
 
-    rx_stats_read_buffer[8] = radio_total_crcok & 0xFF;
-    rx_stats_read_buffer[9] = (radio_total_crcok >> 8) & 0xFF;
-    rx_stats_read_buffer[10] = (radio_total_crcok >> 16) & 0xFF;
-    rx_stats_read_buffer[11] = (radio_total_crcok >> 24) & 0xFF;
+static ssize_t read_rx_stats_handler(
+    struct bt_conn *conn,
+    const struct bt_gatt_attr *attr,
+    void *buf,
+    uint16_t len,
+    uint16_t offset)
+{
+    stats_read_buffer[0] = radio_total_rssi & 0xFF;
+    stats_read_buffer[1] = (radio_total_rssi >> 8) & 0xFF;
+    stats_read_buffer[2] = (radio_total_rssi >> 16) & 0xFF;
+    stats_read_buffer[3] = (radio_total_rssi >> 24) & 0xFF;
+
+    stats_read_buffer[4] = radio_packets_received & 0xFF;
+    stats_read_buffer[5] = (radio_packets_received >> 8) & 0xFF;
+    stats_read_buffer[6] = (radio_packets_received >> 16) & 0xFF;
+    stats_read_buffer[7] = (radio_packets_received >> 24) & 0xFF;
+
+    stats_read_buffer[8] = radio_total_crcok & 0xFF;
+    stats_read_buffer[9] = (radio_total_crcok >> 8) & 0xFF;
+    stats_read_buffer[10] = (radio_total_crcok >> 16) & 0xFF;
+    stats_read_buffer[11] = (radio_total_crcok >> 24) & 0xFF;
 
     uint32_t ticks_taken = NRF_TIMER2->CC[1] - NRF_TIMER2->CC[0];
 
-    rx_stats_read_buffer[12] = ticks_taken & 0xFF;
-    rx_stats_read_buffer[13] = (ticks_taken >> 8) & 0xFF;
-    rx_stats_read_buffer[14] = (ticks_taken >> 16) & 0xFF;
-    rx_stats_read_buffer[15] = (ticks_taken >> 24) & 0xFF;
+    stats_read_buffer[12] = ticks_taken & 0xFF;
+    stats_read_buffer[13] = (ticks_taken >> 8) & 0xFF;
+    stats_read_buffer[14] = (ticks_taken >> 16) & 0xFF;
+    stats_read_buffer[15] = (ticks_taken >> 24) & 0xFF;
 
-    return bt_gatt_attr_read(conn, attr, buf, len, offset, rx_stats_read_buffer, 16);
+    return bt_gatt_attr_read(conn, attr, buf, len, offset, stats_read_buffer, 16);
 }
 
 static void on_sent(struct bt_conn *conn, void *user_data)
@@ -283,15 +305,19 @@ void on_cccd_changed(const struct bt_gatt_attr *attr, uint16_t value)
 }
 
 BT_GATT_SERVICE_DEFINE(host_service,
-                       BT_GATT_PRIMARY_SERVICE(BT_UUID_MY_SERVICE),
-                       BT_GATT_CHARACTERISTIC(BT_UUID_MY_SERVICE_RX,
+                       BT_GATT_PRIMARY_SERVICE(RADIO_SERVICE_UUID),
+                       BT_GATT_CHARACTERISTIC(RADIO_COMMAND_CHARACTERISTIC_UUID,
                                               BT_GATT_CHRC_WRITE | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
                                               BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-                                              NULL, on_receive, NULL),
-                       BT_GATT_CHARACTERISTIC(BT_UUID_MY_SERVICE_TX,
+                                              NULL, handle_host_command, NULL),
+                       BT_GATT_CHARACTERISTIC(RADIO_RX_STATS_CHARACTERISTIC_UUID,
                                               BT_GATT_CHRC_READ,
                                               BT_GATT_PERM_READ,
-                                              on_read, NULL, NULL),
+                                              read_rx_stats_handler, NULL, NULL),
+                       BT_GATT_CHARACTERISTIC(RADIO_TX_STATS_CHARACTERISTIC_UUID,
+                                              BT_GATT_CHRC_READ,
+                                              BT_GATT_PERM_READ,
+                                              read_tx_stats_handler, NULL, NULL),
                        BT_GATT_CCC(on_cccd_changed,
                                    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE), );
 
@@ -306,7 +332,7 @@ void host_service_send(struct bt_conn *conn, const uint8_t *data, uint16_t len)
 
     struct bt_gatt_notify_params params =
         {
-            .uuid = BT_UUID_MY_SERVICE_TX,
+            .uuid = RADIO_SERVICE_UUID,
             .attr = attr,
             .data = data,
             .len = len,

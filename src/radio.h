@@ -27,6 +27,8 @@ extern uint32_t radio_packets_received;
 extern uint32_t radio_total_crcok;
 extern bool radio_has_received;
 
+extern uint32_t radio_packets_sent;
+
 /**@brief Radio transmit and address pattern. */
 enum transmit_pattern
 {
