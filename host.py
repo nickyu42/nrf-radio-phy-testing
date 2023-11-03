@@ -1,4 +1,5 @@
 import asyncio
+import csv
 from bleak import BleakScanner, BleakClient
 
 PLATYNODE_1 = 'DD2AD668-201C-FAAB-B036-C245019CB582'
@@ -23,15 +24,8 @@ async def scan():
         print("-" * len(str(d)))
         print(a)
 
-
-async def main():
-    tx_mode = 0
-    tx_power = 0
-    tx_channel = 0
-
-    print('Finding device')
-    device1 = await BleakScanner.find_device_by_address(PLATYNODE_1)
-    device2 = await BleakScanner.find_device_by_address(PLATYNODE_2)
+async def run_test(device1, device2, tx_mode, tx_power, tx_channel):
+    print(f'---------- STARTING TEST {tx_mode=} {tx_power=} {tx_channel=} -------------')
 
     print('Connecting')
     async with BleakClient(device1) as tx_client, BleakClient(device2) as rx_client:
@@ -89,8 +83,23 @@ async def main():
         
         if packets > 0:
             print(f' average_rssi={rssi/packets}', end='')
+
+        with open('results.csv', 'a+') as f:
+            writer = csv.writer(f)
+            writer.writerow([tx_mode, tx_channel, tx_power, sent, packets, crc, rssi, ticks, ticks/oscillator_frequency])
         
         print()
+
+async def main():
+    tx_mode = 4
+
+    print('Finding device')
+    device1 = await BleakScanner.find_device_by_address(PLATYNODE_1)
+    device2 = await BleakScanner.find_device_by_address(PLATYNODE_2)
+
+    for tx_power in range(8, 9, 2):
+        for tx_channel in range(0, 110, 20):
+            await run_test(device1, device2, tx_mode, tx_power, tx_channel)
 
 
 asyncio.run(main())
