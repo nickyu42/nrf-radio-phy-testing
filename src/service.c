@@ -209,6 +209,11 @@ static ssize_t handle_host_command(
         channel = new_channel;
         break;
 
+    case SET_PACKET_SIZE:
+        printk("SET_PACKET_SIZE %u\n", buffer[1]);
+        packet_size = buffer[1];
+        break;
+
     case START_TX:
         printk("START_TX\n");
         k_work_submit(&send_tx_packets_worker);

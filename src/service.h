@@ -13,6 +13,7 @@ typedef enum
     SET_TX_MODE = 0x00,
     SET_TX_POWER = 0x01,
     SET_TX_CHANNEL = 0x02,
+    SET_PACKET_SIZE = 0x03,
 
     START_TX = 0x10,
     START_RX = 0x11,

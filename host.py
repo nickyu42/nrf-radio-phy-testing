@@ -24,7 +24,8 @@ async def scan():
         print("-" * len(str(d)))
         print(a)
 
-async def run_test(device1, device2, tx_mode, tx_power, tx_channel):
+
+async def run_test(device1, device2, tx_mode, tx_power, tx_channel, packet_size, filename='results.csv'):
     print(f'---------- STARTING TEST {tx_mode=} {tx_power=} {tx_channel=} -------------')
 
     print('Connecting')
@@ -39,10 +40,12 @@ async def run_test(device1, device2, tx_mode, tx_power, tx_channel):
         await tx_client.write_gatt_char(SEND_COMMAND_CHAR, bytearray([0x00, tx_mode]), response=False)
         await tx_client.write_gatt_char(SEND_COMMAND_CHAR, bytearray([0x01, tx_power]), response=False)
         await tx_client.write_gatt_char(SEND_COMMAND_CHAR, bytearray([0x02, tx_channel]), response=False)
+        await tx_client.write_gatt_char(SEND_COMMAND_CHAR, bytearray([0x03, packet_size]), response=False)
 
         await rx_client.write_gatt_char(SEND_COMMAND_CHAR, bytearray([0x00, tx_mode]), response=False)
         await rx_client.write_gatt_char(SEND_COMMAND_CHAR, bytearray([0x01, tx_power]), response=False)
         await rx_client.write_gatt_char(SEND_COMMAND_CHAR, bytearray([0x02, tx_channel]), response=False)
+        await rx_client.write_gatt_char(SEND_COMMAND_CHAR, bytearray([0x03, packet_size]), response=False)        
 
         await asyncio.sleep(0.1)
 
@@ -84,22 +87,35 @@ async def run_test(device1, device2, tx_mode, tx_power, tx_channel):
         if packets > 0:
             print(f' average_rssi={rssi/packets}', end='')
 
-        with open('results.csv', 'a+') as f:
+        with open(filename, 'a+') as f:
             writer = csv.writer(f)
-            writer.writerow([tx_mode, tx_channel, tx_power, sent, packets, crc, rssi, ticks, ticks/oscillator_frequency])
+            writer.writerow([tx_mode, tx_channel, tx_power, packet_size, sent, packets, crc, rssi, ticks, ticks/oscillator_frequency])
         
         print()
 
+
 async def main():
-    tx_mode = 4
+    tx_channel = 100
+    tx_power = 8
 
     print('Finding device')
     device1 = await BleakScanner.find_device_by_address(PLATYNODE_1)
     device2 = await BleakScanner.find_device_by_address(PLATYNODE_2)
 
-    for tx_power in range(8, 9, 2):
-        for tx_channel in range(0, 110, 20):
-            await run_test(device1, device2, tx_mode, tx_power, tx_channel)
+    for _ in range(5):
+        await run_test(device1, device2, 4, tx_power, tx_channel, 64, 'results_packetsize_20cm.csv')
+
+    for _ in range(5):
+        await run_test(device1, device2, 4, tx_power, tx_channel, 128, 'results_packetsize_20cm.csv')
+
+    for _ in range(5):
+        await run_test(device1, device2, 4, tx_power, tx_channel, 255, 'results_packetsize_20cm.csv')
+                
+    print('Starting experiments')
+    for tx_mode in range(5, 6):
+        for packet_size in (16, 32, 64, 128, 255):
+            for _ in range(5):
+                await run_test(device1, device2, tx_mode, tx_power, tx_channel, packet_size, 'results_packetsize_20cm.csv')
 
 
 asyncio.run(main())

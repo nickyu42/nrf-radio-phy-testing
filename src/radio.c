@@ -58,6 +58,9 @@ static uint16_t total_payload_size;
 /* PPI channel for starting radio */
 static uint8_t ppi_radio_start;
 
+/* Packet size to use */
+uint8_t packet_size = RADIO_MAX_PAYLOAD_LEN - 1;
+
 /* RX packets statistics */
 uint32_t radio_total_rssi;
 uint32_t radio_packets_received;
@@ -114,7 +117,8 @@ static void radio_config(nrf_radio_mode_t mode, enum transmit_pattern pattern)
 	 */
 	memset(&packet_conf, 0, sizeof(packet_conf));
 	packet_conf.lflen = RADIO_LENGTH_LENGTH_FIELD;
-	packet_conf.maxlen = (sizeof(tx_packet) - 1);
+	packet_conf.maxlen = packet_size;
+	// packet_conf.maxlen = (sizeof(tx_packet) - 1);
 	packet_conf.statlen = 0;
 	packet_conf.balen = 4;
 	packet_conf.big_endian = true;
@@ -169,7 +173,8 @@ static void radio_modulated_tx_carrier(uint8_t mode, int8_t txpower, uint8_t cha
 {
 	radio_disable();
 	radio_config(mode, pattern);
-	tx_packet[0] = sizeof(tx_packet) - 1;
+	// tx_packet[0] = sizeof(tx_packet) - 1;
+	tx_packet[0] = packet_size;
 	memset(tx_packet + 1, 0xF0, sizeof(tx_packet) - 1);
 	nrf_radio_packetptr_set(NRF_RADIO, tx_packet);
 
