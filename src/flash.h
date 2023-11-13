@@ -9,6 +9,8 @@
 #define FLASH_SIZE 16777216
 #define FLASH_SECTOR_SIZE 4069
 
+extern struct device *fs_flash_device;
+
 typedef enum
 {
     FS_SUCCESS = 0xFF,
@@ -30,5 +32,9 @@ flash_read_t fs_read(struct device *d,
 int fs_skip_to_end(struct device *d);
 
 int fs_write_packet(struct device *d, uint8_t *buf, uint16_t len);
+
+int fs_erase(struct device *d, uint8_t sectors);
+
+void fs_init(void);
 
 #endif

@@ -3,12 +3,16 @@
 #include "service.h"
 #include "radio.h"
 #include "bluetooth.h"
+#include "flash.h"
 
 #define RADIO_SERVICE 0x1E, 0x6B, 0x0B, 0xEA, 0x7A, 0x4F, 0x48, 0x2B, \
                       0x86, 0x9C, 0x76, 0x80, 0x15, 0xA5, 0x1A, 0xA5
 
 #define RADIO_COMMAND_CHARACTERISTIC 0xFA, 0x26, 0xA2, 0x40, 0x3B, 0x8A, 0x44, 0xD7, \
                                      0xBD, 0x9B, 0xE3, 0x7D, 0xBC, 0xDC, 0xE9, 0x58
+
+#define RADIO_READ_LOG_CHARACTERISTIC 0xF7, 0x42, 0x47, 0x95, 0x77, 0x8E, 0x4E, 0x04, \
+                                      0x94, 0x3E, 0x62, 0x17, 0xDC, 0x7D, 0x3A, 0x5D
 
 #define RADIO_RX_STATS_CHARACTERISTIC 0xC4, 0x17, 0xB1, 0x87, 0x59, 0x6C, 0x48, 0x60, \
                                       0xAC, 0xD3, 0x17, 0xCD, 0xF8, 0xF8, 0x71, 0x73
@@ -20,22 +24,28 @@
 #define RADIO_COMMAND_CHARACTERISTIC_UUID BT_UUID_DECLARE_128(RADIO_COMMAND_CHARACTERISTIC)
 #define RADIO_RX_STATS_CHARACTERISTIC_UUID BT_UUID_DECLARE_128(RADIO_RX_STATS_CHARACTERISTIC)
 #define RADIO_TX_STATS_CHARACTERISTIC_UUID BT_UUID_DECLARE_128(RADIO_TX_STATS_CHARACTERISTIC)
+#define RADIO_READ_LOG_CHARACTERISTIC_UUID BT_UUID_DECLARE_128(RADIO_READ_LOG_CHARACTERISTIC)
 
 #define MAX_TRANSMIT_SIZE 240
 uint8_t data_rx[MAX_TRANSMIT_SIZE];
 uint8_t data_tx[MAX_TRANSMIT_SIZE];
 
-uint8_t stats_read_buffer[16];
+uint8_t stats_read_buffer[256];
 
 static nrf_radio_mode_t mode;
 static uint8_t tx_power;
 static uint8_t channel;
+
+bool indicate_active = false;
 
 static int send_tx_packets(void);
 static K_WORK_DEFINE(send_tx_packets_worker, send_tx_packets);
 
 static int receive_rx_packets(void);
 static K_WORK_DEFINE(receive_rx_packets_worker, receive_rx_packets);
+
+int send_all_logs(void);
+static K_WORK_DEFINE(send_all_logs_worker, send_all_logs);
 
 int host_service_init(void)
 {
@@ -45,6 +55,8 @@ int host_service_init(void)
     mode = NRF_RADIO_MODE_BLE_LR125KBIT;
     tx_power = RADIO_TXPOWER_TXPOWER_Pos8dBm;
     channel = 0;
+
+    return 0;
 }
 
 // Disables BT temporarily and sends a set amount of packets before reenabling BT
@@ -78,6 +90,8 @@ static int send_tx_packets(void)
     printk("Restarting MPSL and BT\n");
     mpsl_lib_init();
     bluetooth_enable();
+
+    return 0;
 }
 
 static int receive_rx_packets(void)
@@ -88,6 +102,13 @@ static int receive_rx_packets(void)
     test_config.mode = mode;
     test_config.params.rx.channel = channel;
     test_config.params.rx.pattern = TRANSMIT_PATTERN_11110000;
+
+    // Clear flash for logging
+    if (fs_erase(fs_flash_device, 10) != 0)
+    {
+        printk("receive_rx_packets: error! could not erase flash\n");
+        return -1;
+    }
 
     // Reset radio RX statistics
     radio_total_rssi = 0;
@@ -103,27 +124,29 @@ static int receive_rx_packets(void)
     NRF_TIMER2->TASKS_START = TIMER_TASKS_START_TASKS_START_Trigger;
 
     bluetooth_disable();
-    printk("Disabling MPSL\n");
+    printk("receive_rx_packets: Disabling MPSL\n");
     mpsl_lib_uninit();
 
-    printk("Starting RX test\n");
+    printk("receive_rx_packets: Starting RX test\n");
     radio_test_init();
     radio_test_start(&test_config);
 
     k_msleep(6000);
 
-    printk("Cancelling test\n");
+    printk("receive_rx_packets: Cancelling test\n");
     radio_test_cancel();
     NRF_TIMER2->TASKS_STOP = TIMER_TASKS_STOP_TASKS_STOP_Trigger;
-    printk("Restarting MPSL and BT\n");
+    printk("receive_rx_packets: Restarting MPSL and BT\n");
     mpsl_lib_init();
     bluetooth_enable();
 
     NRF_TIMER2->TASKS_CAPTURE[2] = TIMER_TASKS_CAPTURE_TASKS_CAPTURE_Trigger;
 
     uint32_t ticks_taken = NRF_TIMER2->CC[1] - NRF_TIMER2->CC[0];
-    printk("Done with RX stats: total %u, crc %u, rssi %u, ticks %u, time_taken %u\n",
+    printk("receive_rx_packets: Done with RX stats: total %u, crc %u, rssi %u, ticks %u, time_taken %u\n",
            radio_packets_received, radio_total_crcok, radio_total_rssi, ticks_taken, NRF_TIMER2->CC[2]);
+
+    return 0;
 }
 
 static ssize_t handle_host_command(
@@ -294,14 +317,27 @@ void on_cccd_changed(const struct bt_gatt_attr *attr, uint16_t value)
     {
     case BT_GATT_CCC_NOTIFY:
         // Start sending stuff!
+        printk("on_cccd_changed: notify\n");
         break;
 
     case BT_GATT_CCC_INDICATE:
         // Start sending stuff via indications
+        printk("on_cccd_changed: indicate\n");
+        indicate_active = true;
+
+        // For some reason, having this line here causes the board to be stuck
+        // when RTT is trying to connect?
+        // It seems like if any ble handler references `send_all_logs`, which
+        // references `host_service`, some vague error occurs that makes it 
+        // so that RTT does not work??
+        // k_work_submit(&send_all_logs_worker);
+
         break;
 
     case 0:
         // Stop sending stuff
+        printk("on_cccd_changed: stop\n");
+        indicate_active = false;
         break;
 
     default:
@@ -316,15 +352,74 @@ BT_GATT_SERVICE_DEFINE(host_service,
                                               BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
                                               NULL, handle_host_command, NULL),
                        BT_GATT_CHARACTERISTIC(RADIO_RX_STATS_CHARACTERISTIC_UUID,
-                                              BT_GATT_CHRC_READ,
+                                              BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
                                               BT_GATT_PERM_READ,
                                               read_rx_stats_handler, NULL, NULL),
+                       BT_GATT_CCC(on_cccd_changed,
+                                   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
                        BT_GATT_CHARACTERISTIC(RADIO_TX_STATS_CHARACTERISTIC_UUID,
                                               BT_GATT_CHRC_READ,
                                               BT_GATT_PERM_READ,
-                                              read_tx_stats_handler, NULL, NULL),
-                       BT_GATT_CCC(on_cccd_changed,
-                                   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE), );
+                                              read_tx_stats_handler, NULL, NULL), );
+
+static void indicate_cb(struct bt_conn *conn,
+                        struct bt_gatt_indicate_params *params, uint8_t err)
+{
+}
+
+static void indicate_destroy(struct bt_gatt_indicate_params *params)
+{
+}
+
+int send_all_logs(void)
+{
+    printk("send_all_logs: starting...\n");
+
+    const struct bt_gatt_attr *attr = &host_service.attrs[3];
+
+    uint8_t part = 1;
+
+    flash_read_t result;
+
+    struct bt_gatt_indicate_params ind_params =
+        {
+            .attr = attr,
+            .func = indicate_cb,
+            .destroy = indicate_destroy,
+            .data = stats_read_buffer,
+            .len = sizeof(stats_read_buffer),
+        };
+
+    while (true)
+    {
+        result = fs_read(fs_flash_device, stats_read_buffer, part);
+
+        if (result.res != FS_SUCCESS)
+        {
+            printk("send_all_logs: read result %d\n", result.res);
+            break;
+        }
+
+        ind_params.len = result.bytes_read;
+
+        if (!indicate_active)
+        {
+            break;
+        }
+
+        printk("send_all_logs: indicate\n");
+        int err = bt_gatt_indicate(NULL, &ind_params);
+        if (err != 0)
+        {
+            printk("send_all_logs: bt_gatt_indicate err %d\n", err);
+        }
+
+        part++;
+    }
+
+    printk("send_all_logs: end\n");
+    return 0;
+}
 
 void host_service_send(struct bt_conn *conn, const uint8_t *data, uint16_t len)
 {
