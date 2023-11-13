@@ -4,8 +4,8 @@ main: build flash
 
 .PHONY: test
 test: build
-	pyocd flash -t nrf52840 -u ${PROBE1} ./build/zephyr/zephyr.hex
-	pyocd flash -t nrf52840 -u ${PROBE2} ./build/zephyr/zephyr.hex
+	pyocd flash -t nrf52840 -u ${PROBE1} ./build/zephyr/zephyr.elf
+	pyocd flash -t nrf52840 -u ${PROBE2} ./build/zephyr/zephyr.elf
 	tmux \
 		new-session  'pyocd rtt --target nrf52840 -u ${PROBE1}' \; \
 		split-window 'pyocd rtt --target nrf52840 -u ${PROBE2}'
@@ -23,7 +23,7 @@ dfu:
 
 .PHONY: flash
 flash:
-	pyocd flash -t nrf52840 ./build/zephyr/zephyr.hex
+	pyocd flash -t nrf52840 ./build/zephyr/zephyr.elf
 
 .PHONY: build
 build:
