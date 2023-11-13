@@ -38,14 +38,14 @@ static uint8_t channel;
 
 bool indicate_active = false;
 
-static int send_tx_packets(void);
+static void send_tx_packets(void);
 static K_WORK_DEFINE(send_tx_packets_worker, send_tx_packets);
 
-static int receive_rx_packets(void);
+static void receive_rx_packets(void);
 static K_WORK_DEFINE(receive_rx_packets_worker, receive_rx_packets);
 
 int send_all_logs(void);
-static K_WORK_DEFINE(send_all_logs_worker, send_all_logs);
+// static K_WORK_DEFINE(send_all_logs_worker, send_all_logs);
 
 int host_service_init(void)
 {
@@ -60,7 +60,7 @@ int host_service_init(void)
 }
 
 // Disables BT temporarily and sends a set amount of packets before reenabling BT
-static int send_tx_packets(void)
+static void send_tx_packets(void)
 {
     struct radio_test_config test_config;
     memset(&test_config, 0, sizeof(test_config));
@@ -94,7 +94,7 @@ static int send_tx_packets(void)
     return 0;
 }
 
-static int receive_rx_packets(void)
+static void receive_rx_packets(void)
 {
     struct radio_test_config test_config;
     memset(&test_config, 0, sizeof(test_config));
@@ -318,6 +318,7 @@ void on_cccd_changed(const struct bt_gatt_attr *attr, uint16_t value)
     case BT_GATT_CCC_NOTIFY:
         // Start sending stuff!
         printk("on_cccd_changed: notify\n");
+        indicate_active = true;
         break;
 
     case BT_GATT_CCC_INDICATE:
@@ -328,7 +329,7 @@ void on_cccd_changed(const struct bt_gatt_attr *attr, uint16_t value)
         // For some reason, having this line here causes the board to be stuck
         // when RTT is trying to connect?
         // It seems like if any ble handler references `send_all_logs`, which
-        // references `host_service`, some vague error occurs that makes it 
+        // references `host_service`, some vague error occurs that makes it
         // so that RTT does not work??
         // k_work_submit(&send_all_logs_worker);
 
@@ -362,15 +363,6 @@ BT_GATT_SERVICE_DEFINE(host_service,
                                               BT_GATT_PERM_READ,
                                               read_tx_stats_handler, NULL, NULL), );
 
-static void indicate_cb(struct bt_conn *conn,
-                        struct bt_gatt_indicate_params *params, uint8_t err)
-{
-}
-
-static void indicate_destroy(struct bt_gatt_indicate_params *params)
-{
-}
-
 int send_all_logs(void)
 {
     printk("send_all_logs: starting...\n");
@@ -380,15 +372,6 @@ int send_all_logs(void)
     uint8_t part = 1;
 
     flash_read_t result;
-
-    struct bt_gatt_indicate_params ind_params =
-        {
-            .attr = attr,
-            .func = indicate_cb,
-            .destroy = indicate_destroy,
-            .data = stats_read_buffer,
-            .len = sizeof(stats_read_buffer),
-        };
 
     while (true)
     {
@@ -400,15 +383,12 @@ int send_all_logs(void)
             break;
         }
 
-        ind_params.len = result.bytes_read;
-
         if (!indicate_active)
         {
             break;
         }
 
-        printk("send_all_logs: indicate\n");
-        int err = bt_gatt_indicate(NULL, &ind_params);
+        int err = bt_gatt_notify(NULL, attr, stats_read_buffer, result.bytes_read);
         if (err != 0)
         {
             printk("send_all_logs: bt_gatt_indicate err %d\n", err);
@@ -419,36 +399,4 @@ int send_all_logs(void)
 
     printk("send_all_logs: end\n");
     return 0;
-}
-
-void host_service_send(struct bt_conn *conn, const uint8_t *data, uint16_t len)
-{
-    /*
-    The attribute for the TX characteristic is used with bt_gatt_is_subscribed
-    to check whether notification has been enabled by the peer or not.
-    Attribute table: 0 = Service, 1 = Primary service, 2 = RX, 3 = TX, 4 = CCC.
-    */
-    const struct bt_gatt_attr *attr = &host_service.attrs[3];
-
-    struct bt_gatt_notify_params params =
-        {
-            .uuid = RADIO_SERVICE_UUID,
-            .attr = attr,
-            .data = data,
-            .len = len,
-            .func = on_sent};
-
-    // Check whether notifications are enabled or not
-    if (bt_gatt_is_subscribed(conn, attr, BT_GATT_CCC_NOTIFY))
-    {
-        // Send the notification
-        if (bt_gatt_notify_cb(conn, &params))
-        {
-            printk("Error, unable to send notification\n");
-        }
-    }
-    else
-    {
-        printk("Warning, notification not enabled on the selected attribute\n");
-    }
 }

@@ -23,6 +23,5 @@ extern bool indicate_active;
 int send_all_logs(void);
 
 int host_service_init(void);
-void host_service_send(struct bt_conn *conn, const uint8_t *data, uint16_t len);
 
 #endif

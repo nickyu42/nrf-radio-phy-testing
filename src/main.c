@@ -112,24 +112,11 @@ int main(void)
 	bluetooth_init();
 	fs_init();
 
-	// fs_erase(fs_flash_device, 1);
-	// uint8_t buf[11];
-	// buf[0] = 0xbb;
-	// buf[1] = 0xcc;
-	// fs_write_packet(fs_flash_device, buf, 11);
-	// fs_write_packet(fs_flash_device, buf, 11);
-	// fs_write_packet(fs_flash_device, buf, 11);
-	uint8_t buf[64];
-	flash_read(fs_flash_device, 0, buf, 64);
-	printk("%x %x %x %x\n", buf[0], buf[1], buf[2], buf[3]);
-	printk("%x %x %x %x\n", buf[16 + 0], buf[16 + 1], buf[16 + 2], buf[16 + 3]);
-	printk("%x %x %x %x\n", buf[32 + 0], buf[32 + 1], buf[32 + 2], buf[32 + 3]);
-
 	printk("main: Init done\n");
 
 	while (true)
 	{
-		k_sleep(K_SECONDS(2));
+		k_sleep(K_SECONDS(1));
 
 		if (indicate_active)
 		{
@@ -137,7 +124,7 @@ int main(void)
 			indicate_active = false;
 		}
 	}
-	
+
 	return 0;
 }
 

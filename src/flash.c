@@ -16,10 +16,11 @@ int fs_erase(struct device *d, uint8_t sectors)
     return flash_erase(d, 0, sectors * 4096);
 }
 
-void fs_init(void) 
+void fs_init(void)
 {
     printk("fs_init: Getting QSPI flash\n");
-    if (fs_flash_device == NULL) {
+    if (fs_flash_device == NULL)
+    {
         fs_flash_device = DEVICE_DT_GET(DT_ALIAS(spi_flash0));
         while (!device_is_ready(fs_flash_device))
         {
