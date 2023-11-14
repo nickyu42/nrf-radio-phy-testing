@@ -31,6 +31,8 @@ extern uint8_t packet_size;
 
 extern uint32_t radio_packets_sent;
 
+extern bool radio_logging_active;
+
 /**@brief Radio transmit and address pattern. */
 enum transmit_pattern
 {

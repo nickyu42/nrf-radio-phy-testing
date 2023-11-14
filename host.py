@@ -1,5 +1,7 @@
 import asyncio
 import csv
+import json
+import pprint
 from bleak import BleakScanner, BleakClient
 
 PLATYNODE_1 = "DD2AD668-201C-FAAB-B036-C245019CB582"
@@ -133,30 +135,105 @@ async def run_test(
 async def read_logs(device):
     print("reading logs")
 
+    byte_buffer = bytearray()
+
     async def callback(char, bytes):
-        print(bytes)
+        byte_buffer.extend(bytes)
 
     async with BleakClient(device) as client:
         await client.start_notify(READ_RX_STATS_CHAR, callback)
         await asyncio.sleep(5)
         await client.disconnect()
 
+    return byte_buffer
+
+
+def decode_buffer(buffer):
+    packets = []
+
+    i = 0
+    while i < len(buffer):
+        header = buffer[i : i + 5]
+
+        total_rssi = (
+            buffer[i + 5 + 0]
+            | buffer[i + 5 + 1] << 8
+            | buffer[i + 5 + 2] << 16
+            | buffer[i + 5 + 3] << 24
+        )
+        packets_count = (
+            buffer[i + 5 + 4]
+            | buffer[i + 5 + 5] << 8
+            | buffer[i + 5 + 6] << 16
+            | buffer[i + 5 + 7] << 24
+        )
+        crc = (
+            buffer[i + 5 + 8]
+            | buffer[i + 5 + 9] << 8
+            | buffer[i + 5 + 10] << 16
+            | buffer[i + 5 + 11] << 24
+        )
+        ticks = (
+            buffer[i + 5 + 12]
+            | buffer[i + 5 + 13] << 8
+            | buffer[i + 5 + 14] << 16
+            | buffer[i + 5 + 15] << 24
+        )
+
+        rssi = buffer[i + 5 + 16]
+        packet_size = buffer[i + 5 + 17]
+        packet = buffer[i + 5 + 18 : i + 5 + 18 + packet_size]
+
+        row = {
+            "part": buffer[i + 2],
+            "total_rssi": total_rssi,
+            "packet_count": packets_count,
+            "crc": crc,
+            "ticks": ticks,
+        }
+
+        pprint.pprint(row)
+
+        row["last_packet"] = {
+            "rssi": rssi,
+            "size": packet_size,
+            "data": list(packet),
+        }
+
+        packets.append(row)
+
+        i += 5 + 18 + packet_size
+
+    return packets
+
 
 async def main():
     tx_channel = 100
     tx_power = 8
+    tx_mode = 2
+    packet_size = 128
 
     print("Finding device")
     device1 = await BleakScanner.find_device_by_address(PLATYNODE_1)
-    # device2 = await BleakScanner.find_device_by_address(PLATYNODE_2)
+    device2 = await BleakScanner.find_device_by_address(PLATYNODE_2)
 
     # print('Starting experiments')
     # for tx_mode in range(5, 6):
     #     for packet_size in (16, 32, 64, 128, 255):
     #         for _ in range(5):
     #             await run_test(device1, device2, tx_mode, tx_power, tx_channel, packet_size, 'results_packetsize_20cm.csv')
+    await run_test(
+        device2, device1, tx_mode, tx_power, tx_channel, packet_size, "foo.csv"
+    )
+    buffer = await read_logs(device1)
+    packets = decode_buffer(buffer)
 
-    await read_logs(device1)
+    with open("raw_log_buffer.bin", "wb") as raw, open(
+        "decoded_log_buffer.json", "w"
+    ) as f:
+        raw.write(buffer)
+
+        f.writelines([json.dumps(p) + "\n" for p in packets])
 
 
 asyncio.run(main())

@@ -153,26 +153,26 @@ int bluetooth_disable(void)
 {
     int err;
 
-    printk("Disabling bluetooth\n");
+    printk("bluetooth_disable: Disabling bluetooth\n");
 
     err = bt_le_adv_stop();
     // err = bt_le_ext_adv_stop(adv);
     if (err)
     {
-        printk("Could not stop advertising(err %d)\n", err);
+        printk("bluetooth_disable: Could not stop advertising(err %d)\n", err);
         return 0;
     }
 
-    printk("Advertising stopped\n");
+    printk("bluetooth_disable: Advertising stopped\n");
 
     err = bt_disable();
     if (err)
     {
-        printk("Could not stop bt (err %d)\n", err);
+        printk("bluetooth_disable: Could not stop bt (err %d)\n", err);
         return 0;
     }
 
-    printk("BT stopped\n");
+    printk("bluetooth_disable: BT stopped\n");
 
     return 0;
 }
@@ -194,11 +194,11 @@ int bluetooth_enable(void)
 {
     int err;
 
-    printk("Enabling bluetooth\n");
+    printk("bluetooth_enable: Enabling bluetooth\n");
     err = bt_enable(NULL);
     if (err)
     {
-        printk("Bluetooth init failed (err %d)\n", err);
+        printk("bluetooth_enable: Bluetooth init failed (err %d)\n", err);
         return 0;
     }
 

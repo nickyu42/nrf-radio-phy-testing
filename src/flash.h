@@ -21,7 +21,7 @@ typedef enum
 
 typedef struct
 {
-    uint8_t bytes_read;
+    uint16_t bytes_read;
     flash_read_result_t res;
 } flash_read_t;
 

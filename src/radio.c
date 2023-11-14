@@ -15,6 +15,10 @@
 
 #include <zephyr/drivers/gpio.h>
 
+#include <string.h>
+
+#include "flash.h"
+
 uint32_t radio_is_active_counter = 0;
 
 /* Length on air of the LENGTH field. */
@@ -66,13 +70,15 @@ uint32_t radio_total_rssi;
 uint32_t radio_packets_received;
 uint32_t radio_total_crcok;
 bool radio_has_received;
+// For logging
+static uint8_t rx_log_buf[RADIO_MAX_PAYLOAD_LEN + 4 * 4 + 2];
+bool radio_logging_active = false;
 
 /* TX packets statistics */
 uint32_t radio_packets_sent;
 
 static void radio_power_set(nrf_radio_mode_t mode, uint8_t channel, int8_t power)
 {
-	int8_t output_power = power;
 	int8_t radio_power = power;
 
 	ARG_UNUSED(mode);
@@ -287,12 +293,67 @@ void radio_rx_stats_get(struct radio_rx_stats *rx_stats)
 	rx_stats->packet_cnt = rx_packet_cnt;
 }
 
+static uint16_t write_rx_stats_to_buf()
+{
+	rx_log_buf[0] = radio_total_rssi & 0xFF;
+	rx_log_buf[1] = (radio_total_rssi >> 8) & 0xFF;
+	rx_log_buf[2] = (radio_total_rssi >> 16) & 0xFF;
+	rx_log_buf[3] = (radio_total_rssi >> 24) & 0xFF;
+
+	rx_log_buf[4] = radio_packets_received & 0xFF;
+	rx_log_buf[5] = (radio_packets_received >> 8) & 0xFF;
+	rx_log_buf[6] = (radio_packets_received >> 16) & 0xFF;
+	rx_log_buf[7] = (radio_packets_received >> 24) & 0xFF;
+
+	rx_log_buf[8] = radio_total_crcok & 0xFF;
+	rx_log_buf[9] = (radio_total_crcok >> 8) & 0xFF;
+	rx_log_buf[10] = (radio_total_crcok >> 16) & 0xFF;
+	rx_log_buf[11] = (radio_total_crcok >> 24) & 0xFF;
+
+	uint32_t ticks = NRF_TIMER2->CC[1];
+
+	rx_log_buf[12] = ticks & 0xFF;
+	rx_log_buf[13] = (ticks >> 8) & 0xFF;
+	rx_log_buf[14] = (ticks >> 16) & 0xFF;
+	rx_log_buf[15] = (ticks >> 24) & 0xFF;
+
+	rx_log_buf[16] = rssi;
+	rx_log_buf[17] = packet_size;
+
+	memcpy(rx_log_buf + 18, rx_packet, packet_size);
+
+	return 18 + packet_size;
+}
+
+static void write_rx_log_thread(void)
+{
+	while (true)
+	{
+		if (radio_logging_active)
+		{
+			printk("write_rx_log_thread: creating buf\n");
+			uint16_t l = write_rx_stats_to_buf();
+
+			printk("write_rx_log_thread: writing\n");
+			int err = fs_write_packet(fs_flash_device, rx_log_buf, l);
+			if (err != 0)
+			{
+				printk("write_rx_log_thread: fs_write_packet err=%d\n", err);
+			}
+			k_msleep(500);
+		}
+		else
+		{
+			k_msleep(100);
+		}
+	}
+}
+
 void radio_handler()
 {
 	if (nrf_radio_event_check(NRF_RADIO, NRF_RADIO_EVENT_CRCOK))
 	{
 		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_CRCOK);
-		// rx_packet_cnt++;
 
 		radio_is_active_counter = 1000;
 
@@ -320,9 +381,28 @@ void radio_handler()
 			radio_has_received = true;
 			// Store when the first packet is received into CC[0]
 			NRF_TIMER2->TASKS_CAPTURE[0] = TIMER_TASKS_CAPTURE_TASKS_CAPTURE_Trigger;
+
+			// Use CC[2] to track when to log RX statistics to flash
+			// NRF_TIMER2->TASKS_CAPTURE[2] = TIMER_TASKS_CAPTURE_TASKS_CAPTURE_Trigger;
 		}
 
 		NRF_TIMER2->TASKS_CAPTURE[1] = TIMER_TASKS_CAPTURE_TASKS_CAPTURE_Trigger;
+
+		// Osc freq = 16_000_000 / (2**presc) = 8_000_000 Hz, log every 500ms
+		// if (NRF_TIMER2->CC[1] - NRF_TIMER2->CC[2] >= 4000000)
+		// {
+		// printk("Writing rx logs to flash\n");
+		// k_work_submit(&write_rx_log_worker);
+		// int err = write_rx_stats_to_flash();
+		// if (err != 0)
+		// {
+		// 	printk("radio_handler: logging failed with err=%d\n", err);
+		// }
+
+		// Set prev time
+		// NRF_TIMER2->TASKS_CAPTURE[2] = TIMER_TASKS_CAPTURE_TASKS_CAPTURE_Trigger;
+		// }
+
 		radio_packets_received++;
 	}
 
@@ -346,3 +426,6 @@ int radio_test_init()
 
 	return 0;
 }
+
+K_THREAD_DEFINE(write_rx_log_thread_id, 1024, write_rx_log_thread, NULL, NULL, NULL,
+				6, 0, 0);

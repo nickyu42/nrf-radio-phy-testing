@@ -90,8 +90,6 @@ static void send_tx_packets(void)
     printk("Restarting MPSL and BT\n");
     mpsl_lib_init();
     bluetooth_enable();
-
-    return 0;
 }
 
 static void receive_rx_packets(void)
@@ -107,7 +105,7 @@ static void receive_rx_packets(void)
     if (fs_erase(fs_flash_device, 10) != 0)
     {
         printk("receive_rx_packets: error! could not erase flash\n");
-        return -1;
+        return;
     }
 
     // Reset radio RX statistics
@@ -130,12 +128,16 @@ static void receive_rx_packets(void)
     printk("receive_rx_packets: Starting RX test\n");
     radio_test_init();
     radio_test_start(&test_config);
+    k_msleep(10);
+    radio_logging_active = true;
 
     k_msleep(6000);
 
     printk("receive_rx_packets: Cancelling test\n");
+    radio_logging_active = false;
     radio_test_cancel();
     NRF_TIMER2->TASKS_STOP = TIMER_TASKS_STOP_TASKS_STOP_Trigger;
+
     printk("receive_rx_packets: Restarting MPSL and BT\n");
     mpsl_lib_init();
     bluetooth_enable();
@@ -145,8 +147,6 @@ static void receive_rx_packets(void)
     uint32_t ticks_taken = NRF_TIMER2->CC[1] - NRF_TIMER2->CC[0];
     printk("receive_rx_packets: Done with RX stats: total %u, crc %u, rssi %u, ticks %u, time_taken %u\n",
            radio_packets_received, radio_total_crcok, radio_total_rssi, ticks_taken, NRF_TIMER2->CC[2]);
-
-    return 0;
 }
 
 static ssize_t handle_host_command(
@@ -388,10 +388,22 @@ int send_all_logs(void)
             break;
         }
 
-        int err = bt_gatt_notify(NULL, attr, stats_read_buffer, result.bytes_read);
-        if (err != 0)
+        // Buffer tends to be big, send as max mtu
+        // uint16_t mtu = bt_gatt_get_mtu(bt_current_conn);
+        uint16_t mtu = 20;
+        for (size_t byte_index = 0; byte_index < result.bytes_read; byte_index += mtu)
         {
-            printk("send_all_logs: bt_gatt_indicate err %d\n", err);
+            size_t remaining_bytes = mtu;
+            if (byte_index + mtu > result.bytes_read)
+            {
+                remaining_bytes = result.bytes_read - byte_index;
+            }
+
+            int err = bt_gatt_notify(NULL, attr, stats_read_buffer + byte_index, remaining_bytes);
+            if (err != 0)
+            {
+                printk("send_all_logs: bt_gatt_indicate err %d\n", err);
+            }
         }
 
         part++;

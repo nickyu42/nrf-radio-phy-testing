@@ -11,6 +11,17 @@ static bool reached_end = false;
 // XXX: this should ideally be checked for `device_is_ready()` at startup
 struct device *fs_flash_device = NULL;
 
+uint16_t round_to_pow2(uint16_t v)
+{
+    // See https://graphics.stanford.edu/%7Eseander/bithacks.html#RoundUpPowerOf2
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    return v + 1;
+}
+
 int fs_erase(struct device *d, uint8_t sectors)
 {
     return flash_erase(d, 0, sectors * 4096);
@@ -52,7 +63,7 @@ flash_read_t fs_read(struct device *d,
             return ret;
         }
 
-        printk("offset=%d, %x %x %x %x %x\n", offset, header_buf[0], header_buf[1], header_buf[2], header_buf[3], header_buf[4]);
+        // printk("fs_read: offset=%ld, %x %x %x %x %x\n", offset, header_buf[0], header_buf[1], header_buf[2], header_buf[3], header_buf[4]);
 
         // If no packet here
         if (header_buf[0] != 0xaa || header_buf[1] != 0xaa)
@@ -64,28 +75,30 @@ flash_read_t fs_read(struct device *d,
         len = (uint16_t)header_buf[3] | ((uint16_t)header_buf[4]) << 8;
 
         // header + len + first byte of next part
-        offset += len + 5;
+        offset += round_to_pow2(len + 5);
 
     } while (header_buf[2] < part);
 
-    if (flash_read(d, offset - len, buf, len) != 0)
+    if (flash_read(d, offset - round_to_pow2(len + 5), buf, len + 5) != 0)
     {
         ret.res = FS_ERROR;
         return ret;
     }
 
-    ret.bytes_read = len;
+    ret.bytes_read = len + 5;
     ret.res = FS_SUCCESS;
     return ret;
 }
 
 int fs_skip_to_end(struct device *d)
 {
+    printk("fs_skip_to_end: start\n");
     int err = 0;
 
     if (reached_end)
     {
-        return err;
+        printk("fs_skip_to_end: reached end\n");
+        return 0;
     }
 
     if (!device_is_ready(d))
@@ -98,6 +111,7 @@ int fs_skip_to_end(struct device *d)
 
     while (fs_offset < FLASH_SIZE - 6)
     {
+        printk("fs_skip_to_end: fs_offset=%u\n", fs_offset);
         err = flash_read(d, fs_offset, header_buf, 5);
         if (err != 0)
         {
@@ -138,7 +152,11 @@ int fs_write_packet(struct device *d, uint8_t *buf, uint16_t len)
         }
     }
 
-    uint8_t write_buf[len + 5];
+    uint16_t l = round_to_pow2(len + 5);
+
+    printk("fs_write_packet: l %u len %u\n", l, len);
+
+    uint8_t write_buf[l];
 
     write_buf[0] = 0xaa;
     write_buf[1] = 0xaa;
@@ -146,16 +164,20 @@ int fs_write_packet(struct device *d, uint8_t *buf, uint16_t len)
     write_buf[3] = (uint8_t)len & 0xff;
     write_buf[4] = (uint8_t)(len >> 8) & 0xff;
 
+    // printk("memcpy\n");
+
     memcpy(write_buf + 5, buf, len);
 
-    err = flash_write(d, fs_offset, write_buf, len + 5);
+    printk("fs_write_packet: write offset=%u\n", fs_offset);
+
+    err = flash_write(d, fs_offset, write_buf, l);
     if (err != 0)
     {
         return err;
     }
 
     current_part++;
-    fs_offset += len + 5;
+    fs_offset += l;
 
     return 0;
 }
