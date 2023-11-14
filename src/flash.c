@@ -139,6 +139,7 @@ int fs_skip_to_end(struct device *d)
 
 // Note that `len + 5` must be a power of 2
 // This is not checked, handle user side
+// Edit: Must be a factor of 4, see zephyr/drivers/flash/nrf_qspi_nor.c:qspi_nor_write()
 int fs_write_packet(struct device *d, uint8_t *buf, uint16_t len)
 {
     int err;
@@ -154,7 +155,7 @@ int fs_write_packet(struct device *d, uint8_t *buf, uint16_t len)
 
     uint16_t l = round_to_pow2(len + 5);
 
-    printk("fs_write_packet: l %u len %u\n", l, len);
+    // printk("fs_write_packet: l %u len %u\n", l, len);
 
     uint8_t write_buf[l];
 
@@ -168,7 +169,7 @@ int fs_write_packet(struct device *d, uint8_t *buf, uint16_t len)
 
     memcpy(write_buf + 5, buf, len);
 
-    printk("fs_write_packet: write offset=%u\n", fs_offset);
+    // printk("fs_write_packet: write offset=%u\n", fs_offset);
 
     err = flash_write(d, fs_offset, write_buf, l);
     if (err != 0)

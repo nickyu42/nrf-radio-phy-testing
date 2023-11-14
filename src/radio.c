@@ -331,11 +331,10 @@ static void write_rx_log_thread(void)
 	{
 		if (radio_logging_active)
 		{
-			printk("write_rx_log_thread: creating buf\n");
-			uint16_t l = write_rx_stats_to_buf();
+			uint16_t rx_stats_bytes = write_rx_stats_to_buf();
 
 			printk("write_rx_log_thread: writing\n");
-			int err = fs_write_packet(fs_flash_device, rx_log_buf, l);
+			int err = fs_write_packet(fs_flash_device, rx_log_buf, rx_stats_bytes);
 			if (err != 0)
 			{
 				printk("write_rx_log_thread: fs_write_packet err=%d\n", err);
@@ -379,29 +378,12 @@ void radio_handler()
 		if (!radio_has_received)
 		{
 			radio_has_received = true;
+
 			// Store when the first packet is received into CC[0]
 			NRF_TIMER2->TASKS_CAPTURE[0] = TIMER_TASKS_CAPTURE_TASKS_CAPTURE_Trigger;
-
-			// Use CC[2] to track when to log RX statistics to flash
-			// NRF_TIMER2->TASKS_CAPTURE[2] = TIMER_TASKS_CAPTURE_TASKS_CAPTURE_Trigger;
 		}
 
 		NRF_TIMER2->TASKS_CAPTURE[1] = TIMER_TASKS_CAPTURE_TASKS_CAPTURE_Trigger;
-
-		// Osc freq = 16_000_000 / (2**presc) = 8_000_000 Hz, log every 500ms
-		// if (NRF_TIMER2->CC[1] - NRF_TIMER2->CC[2] >= 4000000)
-		// {
-		// printk("Writing rx logs to flash\n");
-		// k_work_submit(&write_rx_log_worker);
-		// int err = write_rx_stats_to_flash();
-		// if (err != 0)
-		// {
-		// 	printk("radio_handler: logging failed with err=%d\n", err);
-		// }
-
-		// Set prev time
-		// NRF_TIMER2->TASKS_CAPTURE[2] = TIMER_TASKS_CAPTURE_TASKS_CAPTURE_Trigger;
-		// }
 
 		radio_packets_received++;
 	}
@@ -411,7 +393,6 @@ void radio_handler()
 		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
 		nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_PHYEND);
 
-		// tx_packet_cnt++;
 		radio_packets_sent++;
 		radio_is_active_counter = 1000;
 	}
