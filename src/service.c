@@ -62,6 +62,9 @@ int host_service_init(void)
 // Disables BT temporarily and sends a set amount of packets before reenabling BT
 static void send_tx_packets(void)
 {
+    // Wait until water
+    k_msleep(5000);
+
     struct radio_test_config test_config;
     memset(&test_config, 0, sizeof(test_config));
     test_config.type = MODULATED_TX;
@@ -82,7 +85,7 @@ static void send_tx_packets(void)
     radio_test_init();
     radio_test_start(&test_config);
 
-    k_msleep(5000);
+    k_msleep(30000);
 
     printk("Cancelling test\n");
     radio_test_cancel();
@@ -94,6 +97,9 @@ static void send_tx_packets(void)
 
 static void receive_rx_packets(void)
 {
+    // Wait until water
+    k_msleep(5000);
+
     struct radio_test_config test_config;
     memset(&test_config, 0, sizeof(test_config));
     test_config.type = RX;
@@ -102,7 +108,7 @@ static void receive_rx_packets(void)
     test_config.params.rx.pattern = TRANSMIT_PATTERN_11110000;
 
     // Clear flash for logging
-    if (fs_erase(fs_flash_device, 10) != 0)
+    if (fs_erase(fs_flash_device, 20) != 0)
     {
         printk("receive_rx_packets: error! could not erase flash\n");
         return;
@@ -131,7 +137,7 @@ static void receive_rx_packets(void)
     k_msleep(10);
     radio_logging_active = true;
 
-    k_msleep(6000);
+    k_msleep(31000);
 
     printk("receive_rx_packets: Cancelling test\n");
     radio_logging_active = false;

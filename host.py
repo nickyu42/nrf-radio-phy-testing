@@ -2,6 +2,8 @@ import asyncio
 import csv
 import json
 import pprint
+import sys
+import os
 from bleak import BleakScanner, BleakClient
 
 PLATYNODE_1 = "DD2AD668-201C-FAAB-B036-C245019CB582"
@@ -25,9 +27,7 @@ async def scan():
         print(a)
 
 
-async def run_test(
-    device1, device2, tx_mode, tx_power, tx_channel, packet_size, filename="results.csv"
-):
+async def run_test(device1, device2, tx_mode, tx_power, tx_channel, packet_size):
     print(
         f"---------- STARTING TEST {tx_mode=} {tx_power=} {tx_channel=} -------------"
     )
@@ -77,11 +77,19 @@ async def run_test(
         # Start TX on client 1
         print("Starting TX")
         await tx_client.write_gatt_char(SEND_COMMAND_CHAR, b"\x10", response=False)
-        await asyncio.sleep(7)
+
+        await asyncio.sleep(5)
+        os.system("afplay /System/Library/Sounds/Submarine.aiff")
+        await asyncio.sleep(33)
+        os.system("afplay /System/Library/Sounds/Sosumi.aiff")
 
         await tx_client.disconnect()
         await rx_client.disconnect()
 
+
+async def read_stats(
+    device1, device2, tx_mode, tx_power, tx_channel, packet_size, filename="results.csv"
+):
     # Reconnect
     print("Reconnecting")
     async with BleakClient(device1) as tx_client, BleakClient(device2) as rx_client:
@@ -208,32 +216,47 @@ def decode_buffer(buffer):
 
 
 async def main():
+    dist = 30
     tx_channel = 100
     tx_power = 8
-    tx_mode = 2
+    tx_mode = 0
     packet_size = 128
 
     print("Finding device")
     device1 = await BleakScanner.find_device_by_address(PLATYNODE_1)
     device2 = await BleakScanner.find_device_by_address(PLATYNODE_2)
 
-    # print('Starting experiments')
-    # for tx_mode in range(5, 6):
-    #     for packet_size in (16, 32, 64, 128, 255):
-    #         for _ in range(5):
-    #             await run_test(device1, device2, tx_mode, tx_power, tx_channel, packet_size, 'results_packetsize_20cm.csv')
-    await run_test(
-        device2, device1, tx_mode, tx_power, tx_channel, packet_size, "foo.csv"
-    )
-    buffer = await read_logs(device1)
-    packets = decode_buffer(buffer)
+    if len(sys.argv) > 1 and sys.argv[1] == "exp":
+        print("Starting experiment")
+        await run_test(
+            device2,
+            device1,
+            tx_mode,
+            tx_power,
+            tx_channel,
+            packet_size,
+        )
+    else:
+        await read_stats(
+            device2,
+            device1,
+            tx_mode,
+            tx_power,
+            tx_channel,
+            packet_size,
+            f"results_{tx_mode}_{tx_channel}_{dist}.csv",
+        )
+        buffer = await read_logs(device1)
+        packets = decode_buffer(buffer)
 
-    with open("raw_log_buffer.bin", "wb") as raw, open(
-        "decoded_log_buffer.json", "w"
-    ) as f:
-        raw.write(buffer)
+        with open(
+            f"raw_log_buffer_{tx_mode}_{tx_channel}_{dist}.bin", "wb"
+        ) as raw, open(
+            f"decoded_log_buffer_{tx_mode}_{tx_channel}_{dist}.json", "w"
+        ) as f:
+            raw.write(buffer)
 
-        f.writelines([json.dumps(p) + "\n" for p in packets])
+            f.writelines([json.dumps(p) + "\n" for p in packets])
 
 
 asyncio.run(main())

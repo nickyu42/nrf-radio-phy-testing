@@ -339,7 +339,7 @@ static void write_rx_log_thread(void)
 			{
 				printk("write_rx_log_thread: fs_write_packet err=%d\n", err);
 			}
-			k_msleep(500);
+			k_msleep(250);
 		}
 		else
 		{
