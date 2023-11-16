@@ -90,6 +90,11 @@ flash_read_t fs_read(struct device *d,
     return ret;
 }
 
+void fs_reset()
+{
+    fs_offset = 0;
+}
+
 int fs_skip_to_end(struct device *d)
 {
     printk("fs_skip_to_end: start\n");
@@ -155,7 +160,7 @@ int fs_write_packet(struct device *d, uint8_t *buf, uint16_t len)
 
     uint16_t l = round_to_pow2(len + 5);
 
-    // printk("fs_write_packet: l %u len %u\n", l, len);
+    printk("fs_write_packet: l %u len %u\n", l, len);
 
     uint8_t write_buf[l];
 
@@ -169,7 +174,7 @@ int fs_write_packet(struct device *d, uint8_t *buf, uint16_t len)
 
     memcpy(write_buf + 5, buf, len);
 
-    // printk("fs_write_packet: write offset=%u\n", fs_offset);
+    printk("fs_write_packet: write offset=%u\n", fs_offset);
 
     err = flash_write(d, fs_offset, write_buf, l);
     if (err != 0)

@@ -35,6 +35,8 @@ int fs_write_packet(struct device *d, uint8_t *buf, uint16_t len);
 
 int fs_erase(struct device *d, uint8_t sectors);
 
+void fs_reset(void);
+
 void fs_init(void);
 
 #endif

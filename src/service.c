@@ -63,7 +63,7 @@ int host_service_init(void)
 static void send_tx_packets(void)
 {
     // Wait until water
-    k_msleep(5000);
+    k_msleep(10000);
 
     struct radio_test_config test_config;
     memset(&test_config, 0, sizeof(test_config));
@@ -98,7 +98,7 @@ static void send_tx_packets(void)
 static void receive_rx_packets(void)
 {
     // Wait until water
-    k_msleep(5000);
+    k_msleep(10000);
 
     struct radio_test_config test_config;
     memset(&test_config, 0, sizeof(test_config));
@@ -113,6 +113,8 @@ static void receive_rx_packets(void)
         printk("receive_rx_packets: error! could not erase flash\n");
         return;
     }
+
+    fs_reset();
 
     // Reset radio RX statistics
     radio_total_rssi = 0;
@@ -229,7 +231,7 @@ static ssize_t handle_host_command(
     case SET_TX_CHANNEL:
         printk("SET_TX_CHANNEL\n");
         uint8_t new_channel = buffer[1];
-        if (new_channel > 80)
+        if (new_channel > 100)
         {
             printk("Invalid TX channel argument %d\n", new_channel);
             break;
