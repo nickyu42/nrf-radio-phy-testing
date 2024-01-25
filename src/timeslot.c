@@ -12,14 +12,14 @@
 #include "radio.h"
 #include "timer.h"
 
-#define TIMESLOT_LENGTH_US 200UL
+#define TIMESLOT_LENGTH_US 300UL
 #define TIMER_EXPIRY_US (TIMESLOT_LENGTH_US - 50)
 
-#define TIMESLOT_LENGTH_US_RX 500UL
+#define TIMESLOT_LENGTH_US_RX 1000UL
 #define TIMER_EXPIRY_US_RX (TIMESLOT_LENGTH_US_RX - 50)
 
-#define TIMESLOT_REQUEST_DISTANCE_US (1000)
-#define TIMESLOT_REQUEST_DISTANCE_US_RX (1200)
+#define TIMESLOT_REQUEST_DISTANCE_US (50000)
+#define TIMESLOT_REQUEST_DISTANCE_US_RX (2200)
 
 static mpsl_timeslot_session_id_t session_id = 0xFFu;
 static mpsl_timeslot_signal_return_param_t signal_callback_return_param;
@@ -103,8 +103,6 @@ static void timeslot_radio_config()
 
     // Only send a single packet
     NRF_RADIO->SHORTS = RADIO_SHORTS_END_DISABLE_Msk;
-
-    NVIC_EnableIRQ(RADIO_IRQn);
 }
 
 static mpsl_timeslot_signal_return_param_t *timeslot_callback(
@@ -116,6 +114,7 @@ static mpsl_timeslot_signal_return_param_t *timeslot_callback(
     switch (signal_type)
     {
     case MPSL_TIMESLOT_SIGNAL_START:
+        // Indicate timeslot started, for debugging
         nrf_gpio_pin_set(3);
 
         signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_NONE;
@@ -124,24 +123,33 @@ static mpsl_timeslot_signal_return_param_t *timeslot_callback(
         // Setup timer to trigger an interrupt (and thus the TIMER0
         // signal) before timeslot end. At the start of the timeslot TIMER0
         // is initialized to zero and set to run at 1MHz.
-        if (timeslot_is_tx)
+        if (timeslot_is_tx || ts_state != DESYNCED)
         {
             nrf_timer_cc_set(NRF_TIMER0, NRF_TIMER_CC_CHANNEL0, TIMER_EXPIRY_US);
         }
         else
         {
-            nrf_timer_cc_set(NRF_TIMER0, NRF_TIMER_CC_CHANNEL0, 400UL);
+            nrf_timer_cc_set(NRF_TIMER0, NRF_TIMER_CC_CHANNEL0, TIMER_EXPIRY_US_RX);
         }
 
         nrf_timer_int_enable(NRF_TIMER0, NRF_TIMER_INT_COMPARE0_MASK);
 
         timeslot_radio_config();
 
+        // Not sure if RADIO is entirely cleaned up after BLE operation,
+        // clear interrupt just in case.
+        NVIC_ClearPendingIRQ(RADIO_IRQn);
+        NVIC_EnableIRQ(RADIO_IRQn);
+
         if (timeslot_is_tx)
         {
             // Sequence of events
             // timer3 ensures that timer4 ("clock") is captured at the 40us mark
             // at the 50us mark the radio is instructed to start transmitting
+            // TODO: explore alternatively, instead of using a custom packet
+            //  that gets updated in software, just make RADIO->PACKETPTR use
+            //  the memory address of NRF_TIMER->CC, this makes the entire
+            //  sequence fully hardware dependent and deterministic.
             timer_prime_radio_startup();
             NRF_RADIO->TASKS_TXEN = 1;
             NRF_TIMER3->TASKS_START = 1;
@@ -157,7 +165,7 @@ static mpsl_timeslot_signal_return_param_t *timeslot_callback(
         }
         else
         {
-            // In the rx case, keep listening for packets
+            // Wait for a single packet
             NRF_RADIO->SHORTS =
                 RADIO_SHORTS_READY_START_Msk |
                 RADIO_SHORTS_END_DISABLE_Msk;
@@ -169,53 +177,72 @@ static mpsl_timeslot_signal_return_param_t *timeslot_callback(
         break;
 
     case MPSL_TIMESLOT_SIGNAL_RADIO:
-        signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_NONE;
-        ts_ret_val = &signal_callback_return_param;
-
-        // Timing critical part
-
-        if (!timeslot_is_tx)
-        {
-            // printk("RADIO: %u\n", sync_pkt.timer_val);
-        }
-
         // HACK: even though radio is DISABLED after the initial packet
         //  this timeslot callback keeps getting called, implying an interrupt
         //  is pending. But no RADIO interrupt should be pending, since RADIO
         //  should only interrupt on END event, not sure why this happens.
         //  Disable RADIO interrupt entirely, since it won't be needed after
         //  this anyway.
+        NVIC_DisableIRQ(RADIO_IRQn);
+        NVIC_ClearPendingIRQ(RADIO_IRQn);
         NRF_RADIO->INTENCLR = 0xFFFFFFFF;
         NRF_RADIO->TASKS_DISABLE = 1;
 
-        NVIC_ClearPendingIRQ(RADIO_IRQn);
-        NVIC_DisableIRQ(RADIO_IRQn);
+        signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_NONE;
+        ts_ret_val = &signal_callback_return_param;
+
+        // Capture received time to CC[1]
+        NRF_TIMER0->TASKS_CAPTURE[1] = 1;
+
+        // Timing critical section
+
+        if (!timeslot_is_tx)
+        {
+            // printk("RADIO: %u\n", sync_pkt.timer_val);
+
+            if (ts_state == DESYNCED)
+            {
+                ts_state = SYNCED;
+            }
+        }
 
         break;
 
     case MPSL_TIMESLOT_SIGNAL_TIMER0:
+        // Disable RADIO entirely
+        NVIC_DisableIRQ(RADIO_IRQn);
+        NVIC_ClearPendingIRQ(RADIO_IRQn);
         NRF_RADIO->INTENCLR = 0xFFFFFFFF;
         NRF_RADIO->TASKS_DISABLE = 1;
 
-        NVIC_ClearPendingIRQ(RADIO_IRQn);
-        NVIC_DisableIRQ(RADIO_IRQn);
-
+        // Disable TIMER0 interrupt
         nrf_timer_int_disable(NRF_TIMER0, NRF_TIMER_INT_COMPARE0_MASK);
         nrf_timer_event_clear(NRF_TIMER0, NRF_TIMER_EVENT_COMPARE0);
 
         if (timeslot_is_tx)
         {
+            timeslot_request_normal.params.normal.distance_us = TIMESLOT_REQUEST_DISTANCE_US;
             timeslot_request_normal.params.normal.length_us = TIMESLOT_LENGTH_US;
+        }
+        else if (ts_state == DESYNCED)
+        {
+            timeslot_request_normal.params.normal.distance_us = TIMESLOT_REQUEST_DISTANCE_US_RX;
+            timeslot_request_normal.params.normal.length_us = TIMESLOT_LENGTH_US_RX;
         }
         else
         {
-            timeslot_request_normal.params.normal.length_us = TIMESLOT_LENGTH_US_RX;
+            // sync up
+            timeslot_request_normal.params.normal.distance_us =
+                NRF_TIMER0->CC[1] + TIMESLOT_REQUEST_DISTANCE_US - (TIMESLOT_LENGTH_US / 2UL);
+            // printk("Recv %u, D=%lu\n", NRF_TIMER0->CC[1], NRF_TIMER0->CC[1] + TIMESLOT_REQUEST_DISTANCE_US - (TIMESLOT_LENGTH_US / 2UL));
+            timeslot_request_normal.params.normal.length_us = TIMESLOT_LENGTH_US;
         }
 
         signal_callback_return_param.params.request.p_next = &timeslot_request_normal;
         signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_REQUEST;
         ts_ret_val = &signal_callback_return_param;
 
+        // Indicate timeslot done event, for debugging
         nrf_gpio_pin_clear(3);
 
         break;
