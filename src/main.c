@@ -6,8 +6,9 @@
 
 #include "radio.h"
 #include "bluetooth.h"
-#include "flash.h"
 #include "service.h"
+#include "timer.h"
+#include "timeslot.h"
 
 #define STATUS_THREAD_STACKSIZE 256
 #define STATUS_THREAD_PRIORITY 7
@@ -109,22 +110,14 @@ void status_led_thread(void)
 int main(void)
 {
 	clock_init();
-	bluetooth_init();
-	fs_init();
+	// bluetooth_init();
+
+	timer_init();
+	timer_connect_to_gpiote();
+
+	start_radio_timeslot();
 
 	printk("main: Init done\n");
-
-	while (true)
-	{
-		k_sleep(K_SECONDS(1));
-
-		if (indicate_active)
-		{
-			send_all_logs();
-			indicate_active = false;
-		}
-	}
-
 	return 0;
 }
 
