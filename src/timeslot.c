@@ -199,6 +199,7 @@ static mpsl_timeslot_signal_return_param_t *timeslot_callback(
         if (!timeslot_is_tx)
         {
             // printk("RADIO: %u\n", sync_pkt.timer_val);
+            timer_compensate_offset(sync_pkt.timer_val);
 
             if (ts_state == DESYNCED)
             {
